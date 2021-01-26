@@ -68,6 +68,7 @@
     [(multE l r) (* (interp l fds) (interp r fds))]
     [(appE f args)
      (if (empty? args)
+         (error 'interp "wrong arity")
          (let [(fd (get-fundef f fds))]
                     (interp (subst (numE (interp arg fds))
                                    (fd-par fd)
