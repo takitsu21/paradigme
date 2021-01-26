@@ -1,0 +1,25 @@
+#lang plait
+
+;3
+(define (somme [L : (Listof Number)]) : Number
+  (if (empty? L)
+      0
+      (+ (first L) (somme (rest L)))))
+
+
+;4
+
+(define (Append [LG : (Listof 'a)]
+                [LD : (Listof 'a)]) : (Listof 'a)
+  
+  (if (empty? LG)
+      LD
+      (cons (first LG) (Append (rest LG) LD))))
+
+;5
+
+(define (Map [f : ('a -> 'b)]
+             [L : Listof 'a]) : (Listof 'a)
+  (if (empty? L)
+      L
+      (Map (f (first L)) (rest L))))

@@ -1,0 +1,106 @@
+#lang plait
+
+; Décommentez les tests au fur à mesure de votre avancée dans le sujet.
+; La syntaxe #;expr permet de commenter l'expression expr (soit l'atome,
+; soit de la parenthèse ouvrante à la parenthèse fermante associée).
+
+;;;;; Arbres ;;;;;
+
+(define-type (Arbre 'a)
+  [noeud (valeur : 'a) (fils : (Listof (Arbre 'a)))])
+
+(define-type (ArbreBinaire 'a)
+  [noeud-binaire (valeur : 'a)
+                 (fg : (ArbreBinaire 'a))
+                 (fd : (ArbreBinaire 'a))]
+  [feuille])
+
+(define arbre
+  (noeud 'A (list (noeud 'B
+                         (list (noeud 'E empty)))
+                  (noeud 'C
+                         (list (noeud 'F empty)
+                               (noeud 'G empty)
+                               (noeud 'H empty)))
+                  (noeud 'D
+                         (list (noeud 'I empty)
+                               (noeud 'J
+                                      (list (noeud 'K empty))))))))
+
+(define arbre-binaire
+  (noeud-binaire
+   'A
+   (noeud-binaire
+    'B
+    (noeud-binaire 'E (feuille) (feuille))
+    (noeud-binaire
+     'C
+     (noeud-binaire 'F (feuille) (noeud-binaire 'G (feuille) (noeud-binaire 'H (feuille) (feuille))))
+     (noeud-binaire
+      'D
+      (noeud-binaire 'I (feuille) (noeud-binaire 'J (noeud-binaire 'K (feuille) (feuille)) (feuille)))
+      (feuille))))
+   (feuille)))
+
+#;(test (arbre->binaire arbre) arbre-binaire)
+#;(test (binaire->arbre arbre-binaire) arbre)
+#;(test/exn (binaire->arbre (noeud-binaire 'A (feuille) (noeud-binaire 'B (feuille) (feuille)))) "binaire->arbre")
+
+(define-type Atome
+  [symbole (symb : Symbol)]
+  [nombre (n : Number)]
+  [chaine (str : String)]
+  [booleen (bool : Boolean)])
+
+#;(test (s-exp->arbre `(A (B E) (C F G H) (D I (J K))))
+        (arbre-map (lambda (x) (some (symbole x))) arbre))
+#;(test (s-exp->arbre `((A)))
+        (noeud (none) (list (noeud (some (symbole 'A)) empty))))
+
+;;;;; Code Morse ;;;;;
+
+(define-type Impulsion
+  [courte]
+  [longue]
+  [pause])
+
+(define dict
+  (list
+   (pair #\A (list (courte) (longue)))
+   (pair #\B (list (longue) (courte) (courte) (courte)))
+   (pair #\C (list (longue) (courte) (longue) (courte)))
+   (pair #\D (list (longue) (courte) (courte)))
+   (pair #\E (list (courte)))
+   (pair #\F (list (courte) (courte) (longue) (courte)))
+   (pair #\G (list (longue) (longue) (courte)))
+   (pair #\H (list (courte) (courte) (courte) (courte)))
+   (pair #\I (list (courte) (courte)))
+   (pair #\J (list (courte) (longue) (longue) (longue)))
+   (pair #\K (list (longue) (courte) (longue)))
+   (pair #\L (list (courte) (longue) (courte) (courte)))
+   (pair #\M (list (longue) (longue)))
+   (pair #\N (list (longue) (courte)))
+   (pair #\O (list (longue) (longue) (longue)))
+   (pair #\P (list (courte) (longue) (longue) (courte)))
+   (pair #\Q (list (longue) (longue) (courte) (longue)))
+   (pair #\R (list (courte) (longue) (courte)))
+   (pair #\S (list (courte) (courte) (courte)))
+   (pair #\T (list (longue)))
+   (pair #\U (list (courte) (courte) (longue)))
+   (pair #\V (list (courte) (courte) (courte) (longue)))
+   (pair #\W (list (courte) (longue) (longue)))
+   (pair #\X (list (longue) (courte) (courte) (longue)))
+   (pair #\Y (list (longue) (courte) (longue) (longue)))
+   (pair #\Z (list (longue) (longue) (courte) (courte)))
+   (pair #\  (list (pause)))))
+
+#;(test (code "CODE MORSE") "-.-. --- -.. .   -- --- .-. ... .")
+
+#;(test (decode "-.-. --- -.. .   -- --- .-. ... .") "CODE MORSE")
+
+
+
+
+
+
+
