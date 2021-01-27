@@ -11,9 +11,9 @@
   [numE (n : Number)]
   [idE (s : Symbol)]
   [plusE (l : Exp) (r : Exp)]
+  [subE (l : Exp) (r : Exp)]
   [multE (l : Exp) (r : Exp)]
-  [appE (fun : Symbol) (args : (Listof Exp))]
-  [subE (l : Exp) (r : Exp)])
+  [appE (fun : Symbol) (args : (Listof Exp))])
 
 ; Représentation des définitions de fonctions
 (define-type FunDef
@@ -37,21 +37,33 @@
     [(s-exp-match? `{* ANY ANY} s)
      (let ([sl (s-exp->list s)])
        (multE (parse (second sl)) (parse (third sl))))]
-    [(s-exp-match? `{SYMBOL ANY ...} s)
-     (let ([sl (s-exp->list s)])
-       (appE (s-exp->symbol (first sl)) (map parse (rest sl))))]
     [(s-exp-match? `{- ANY ANY} s)
      (let ([sl (s-exp->list s)])
        (subE (parse (second sl)) (parse (third sl))))]
+    [(s-exp-match? `{SYMBOL ANY ...} s)
+     (let ([sl (s-exp->list s)])
+       (appE (s-exp->symbol (first sl)) (map parse (rest sl))))]
     [else (error 'parse "invalid input")]))
 
+(define (reset1) 1)
+
+(define (checker acc tocheck args)
+  (if (or (empty? tocheck) (>= 3 acc))
+      acc
+      (checker (if (equal? #t (member (first tocheck) args))
+                   (add1 acc)
+                   (reset1))
+               (rest tocheck) args)))
+
 (define (parse-fundef [s : S-Exp]) : FunDef
-  (if (s-exp-match? `{define {SYMBOL SYMBOL ...} ANY} s)
+  (if (s-exp-match? `{define {SYMBOL SYMBOL SYMBOL ...} ANY} s)
       (let ([sl (s-exp->list s)])
         (let ([sl2 (s-exp->list (second sl))])
-          (fd (s-exp->symbol (first sl2)) 
-              (map s-exp->symbol (rest sl2))
-              (parse (third sl)))))
+          (if (>= 3 (checker 1 sl2 sl2))
+              (error 'parse-fundef "bad syntax")
+              (fd (s-exp->symbol (first sl2))
+                  (map s-exp->symbol (rest sl2))
+                  (parse (third sl))))))
       (error 'parse-fundef "invalid input")))
 
 ;;;;;;;;;;;;;;;;;;
@@ -59,6 +71,11 @@
 ;;;;;;;;;;;;;;;;;;
 
 ; Interpréteur
+(define (subst-all fdp fdb args)
+  (if (empty? args)
+      fdb
+      (subst (first args) (first fdp) (subst-all (rest fdp) fdb (rest args)))))
+
 (define (interp [e : Exp] [fds : (Listof FunDef)]) : Number
   (type-case Exp e
     [(numE n) n]
@@ -67,13 +84,13 @@
     [(subE l r) (- (interp l fds) (interp r fds))]
     [(multE l r) (* (interp l fds) (interp r fds))]
     [(appE f args)
-     (if (empty? args)
-         (error 'interp "wrong arity")
-         (let [(fd (get-fundef f fds))]
-                    (interp (subst (numE (interp arg fds))
-                                   (fd-par fd)
-                                   (fd-body fd))
-                            fds)))]))
+     (let [(fd (get-fundef f fds))]
+       (if (not (equal? (length args) (length (fd-par fd))))
+           (error 'interp "wrong arity")
+           (interp (subst-all (fd-par fd)
+                              (fd-body fd)
+                              (map numE (map (lambda (x) (interp x fds)) args)))
+                   fds)))]))
 
 ; Recherche d'une fonction parmi les définitions
 (define (get-fundef [s : Symbol] [fds : (Listof FunDef)]) : FunDef
@@ -90,7 +107,7 @@
     [(plusE l r) (plusE (subst what for l) (subst what for r))]
     [(subE l r) (subE (subst what for l) (subst what for r))]
     [(multE l r) (multE (subst what for l) (subst what for r))]
-    [(appE f arg) (appE f (subst what for arg))]))
+    [(appE f args) (appE f (map (lambda (x) (subst what for x)) args))]))
 
 ;;;;;;;;;
 ; Tests ;
@@ -108,15 +125,20 @@
                          `{define {quadruple x} {double {double x}}}))
       12)
 
-( test ( interp-expr `{- 1 2} empty ) -1)
+
 
 ( test ( interp-expr `{+} empty ) 0)
 ( test ( interp-expr `{+ 1} empty ) 1)
 ( test ( interp-expr `{+ 1 2} empty ) 3)
 ( test ( interp-expr `{+ 1 2 3 4 5} empty ) 15)
 
+
 ( test ( interp-expr `{f 1 2}
                      ( list `{ define {f x y} {+ x y} })) 3)
 ( test/exn ( interp-expr `0 ( list `{ define {f} 42})) "invalid input")
 ( test/exn ( interp-expr `{f 1}
                          ( list `{ define {f x y} {+ x y} })) "wrong arity")
+(test (interp-expr `{- 1 2} empty ) -1)
+
+( test/exn ( interp-expr `{f 1 2 3}
+                     ( list `{ define {f x y y x x y} {+ x y x} })) "bad syntax")
