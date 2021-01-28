@@ -45,21 +45,27 @@
        (appE (s-exp->symbol (first sl)) (map parse (rest sl))))]
     [else (error 'parse "invalid input")]))
 
-(define (reset1) 1)
+(define occur
+  (lambda (a s)
+    (cond
+      [(empty? s) 0]
+      [(equal? a (first s))
+       (add1 (occur a (rest s)))]
+      [else  (occur a (rest s))])))
 
 (define (checker acc tocheck args)
-  (if (or (empty? tocheck) (>= 3 acc))
+  (if (or (empty? tocheck) (equal? #t acc))
       acc
-      (checker (if (equal? #t (member (first tocheck) args))
-                   (add1 acc)
-                   (reset1))
-               (rest tocheck) args)))
+      (checker
+       (<= 2 (occur (first tocheck) args))
+       (rest tocheck)
+       args)))
 
 (define (parse-fundef [s : S-Exp]) : FunDef
   (if (s-exp-match? `{define {SYMBOL SYMBOL SYMBOL ...} ANY} s)
       (let ([sl (s-exp->list s)])
         (let ([sl2 (s-exp->list (second sl))])
-          (if (>= 3 (checker 1 sl2 sl2))
+          (if (checker #f sl2 sl2)
               (error 'parse-fundef "bad syntax")
               (fd (s-exp->symbol (first sl2))
                   (map s-exp->symbol (rest sl2))
@@ -71,10 +77,10 @@
 ;;;;;;;;;;;;;;;;;;
 
 ; Interpréteur
-(define (subst-all fdp fdb args)
+(define (subst-all fd-par fd-body args)
   (if (empty? args)
-      fdb
-      (subst (first args) (first fdp) (subst-all (rest fdp) fdb (rest args)))))
+      fd-body
+      (subst (first args) (first fd-par) (subst-all (rest fd-par) fd-body (rest args)))))
 
 (define (interp [e : Exp] [fds : (Listof FunDef)]) : Number
   (type-case Exp e
@@ -140,5 +146,5 @@
                          ( list `{ define {f x y} {+ x y} })) "wrong arity")
 (test (interp-expr `{- 1 2} empty ) -1)
 
-( test/exn ( interp-expr `{f 1 2 3}
-                     ( list `{ define {f x y y x x y} {+ x y x} })) "bad syntax")
+( test/exn ( interp-expr `{f 1 1}
+                         ( list `{ define {f x x} {+ x y x} })) "bad syntax")
