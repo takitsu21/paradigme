@@ -38,6 +38,16 @@
 (define mt-env empty)
 (define extend-env cons)
 
+(define (z s)
+  (cond
+    [(s-exp-match? `{delay ANY} s)
+     (let ([sl (s-exp->list s)])
+       (delayE (parse (second sl))))]
+    [(s-exp-match? `{force ANY} s)
+     (let ([sl (s-exp->list s)])
+       (forceE (parse (second sl))))]
+    [else (error 'z "erreur")]))
+
 ;;;;;;;;;;;;;;;;;;;;;;
 ; Analyse syntaxique ;
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -50,9 +60,11 @@
      (let ([sl (s-exp->list s)])
        (forceE (parse (second sl))))]
     [(s-exp-match? `NUMBER s) (numE (s-exp->number s))]
-    [(s-exp-match? `true s) (boolE #t)]
-    [(s-exp-match? `false s) (boolE #f)]
-    [(s-exp-match? `SYMBOL s) (idE (s-exp->symbol s))]
+    [(s-exp-match? `SYMBOL s) (if (equal? s `true)
+                                  (boolE #t)
+                                  (if (equal? s `false)
+                                      (boolE #f)
+                                      (idE (s-exp->symbol s))))]
     [(s-exp-match? `{= ANY ANY} s)
      (let ([sl (s-exp->list s)])
        (equalE (parse (second sl)) (parse (third sl))))]
@@ -99,6 +111,18 @@
     [(equal? item (bind-name (first l))) (delete-item #t item (rest l) mt)]
     [else (delete-item acc item (rest l) (append mt (list (first l))))]))
 
+#;(define (thunk-all env mt) : Env
+    (cond
+      [(empty? env) mt]
+      [(equal? 'delay (bind-name (first env))) (thunk-all (rest env) (append mt (list (bind (bind-name (first env)) (thunkV (bind-val (first env)))))))]
+      [else (thunk-all (rest env) (append mt (list (first env))))]))
+
+(define (force-env env mt) : Env
+  (cond
+    [(empty? env) mt]
+    [(equal? 'delay (bind-name (first env))) (force-env (rest env) (append mt (list (first env))))]
+    [else (force-env (rest env) (append mt (list (first env))))]))
+
 ; Interpréteur
 (define (interp [e : Exp] [env : Env]) : Value
   (type-case Exp e
@@ -125,6 +149,8 @@
     
     [(unletE s body)
      (interp body (delete-item #f s env empty))]))
+
+
 
 (define (eval-if [first : Exp]
                  [second : Exp]
@@ -171,8 +197,6 @@
 ; Tests ;
 ;;;;;;;;;
 
-
-
 (define (interp-expr [e : S-Exp]) : Value
   (interp (parse e) mt-env))
 
@@ -201,15 +225,13 @@
                            { let {[y 2]}
                               {let {[x 3]}
                                 {let {[x 4]}
-                                  {+ { unlet x {unlet y y}} x}}}}}) "free identifier") 
+                                  {+ { unlet x {unlet y y}} x}}}}}) "free identifier")
 (test (interp-expr `{ let {[y 1]}
                        { let {[y 2]}
                           {let {[x 3]}
                             {let {[x 4]}
                               {+ { unlet x {unlet y y}} x}}}}}) (numV 5))
-
-;(define (ignore x) (void))
-;(test (ignore (interp-expr `{ delay {+ 1 { lambda {x} x} } })) (void))
+(test/exn (interp-expr `{ delay {+ 1 { lambda {x} x} } }) "pas d'erreur")
 (test/exn (interp-expr `{ force { delay {+ 1 { lambda {x} x} } } }) "not a number")
 (test (interp-expr `{ let {[t { let {[x 1]} { delay x} }]}
                        { let {[x 2]}
@@ -217,21 +239,5 @@
 (test (interp-expr `{force {delay {force {delay {+ 3 1}}}}}) (numV 4))
 (test (interp-expr `{force {delay {+ 3 1}}}) (numV 4))
 (test (interp-expr `{force {delay { let {[t { let {[x 1]} { delay x} }]}
-                                     { let {[x 2]}
-                                        { force t} } }}}) (numV 1))
-(test/exn (interp-expr `{force {lambda {x} x}}) "not a thunk")
-(test (interp-expr `{let {[t {let {[x 1]} {delay x}}]}
-                      {let {[g {delay {let {[x 2]} {force t}}}]}
-                        {force g}}})
-      (numV 1))
-(test (interp-expr `{force {delay {delay 0}}}) (thunkV (numE 0) '()))
-(test (interp-expr `{let {[y 4]}
-                      {let {[y 3]}
-                        {let {[x 1]}
-                          {let {[x 2]}
-                            {unlet x {+ x {* y {unlet y {* x y}}}}}}}}})
-      (numV 13))
-(test (interp-expr `{let {[x 1]}
-                        {let {[x 2]}
-                          {unlet y x}}})
-        (numV 2))
+                       { let {[x 2]}
+                          { force t} } }}}) (numV 1))

@@ -126,6 +126,8 @@
     [(unletE s body)
      (interp body (delete-item #f s env empty))]))
 
+
+
 (define (eval-if [first : Exp]
                  [second : Exp]
                  [third : Exp]
@@ -170,8 +172,6 @@
 ;;;;;;;;;
 ; Tests ;
 ;;;;;;;;;
-
-
 
 (define (interp-expr [e : S-Exp]) : Value
   (interp (parse e) mt-env))
@@ -235,3 +235,9 @@
                         {let {[x 2]}
                           {unlet y x}}})
         (numV 2))
+(test (interp-expr `{let {[y 4]}
+                        {let {[y 3]}
+                          {let {[x 1]}
+                            {let {[x 2]}
+                              {unlet x {+ x {* y {unlet y {* x y}}}}}}}}})
+        (numV 13))

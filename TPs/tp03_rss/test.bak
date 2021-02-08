@@ -126,6 +126,8 @@
     [(unletE s body)
      (interp body (delete-item #f s env empty))]))
 
+
+
 (define (eval-if [first : Exp]
                  [second : Exp]
                  [third : Exp]
@@ -171,8 +173,6 @@
 ; Tests ;
 ;;;;;;;;;
 
-
-
 (define (interp-expr [e : S-Exp]) : Value
   (interp (parse e) mt-env))
 
@@ -201,15 +201,15 @@
                            { let {[y 2]}
                               {let {[x 3]}
                                 {let {[x 4]}
-                                  {+ { unlet x {unlet y y}} x}}}}}) "free identifier") 
+                                  {+ { unlet x {unlet y y}} x}}}}}) "free identifier")
 (test (interp-expr `{ let {[y 1]}
                        { let {[y 2]}
                           {let {[x 3]}
                             {let {[x 4]}
                               {+ { unlet x {unlet y y}} x}}}}}) (numV 5))
 
-;(define (ignore x) (void))
-;(test (ignore (interp-expr `{ delay {+ 1 { lambda {x} x} } })) (void))
+(define (ignore x) (void))
+(test (ignore (interp-expr `{ delay {+ 1 { lambda {x} x} } })) (void))
 (test/exn (interp-expr `{ force { delay {+ 1 { lambda {x} x} } } }) "not a number")
 (test (interp-expr `{ let {[t { let {[x 1]} { delay x} }]}
                        { let {[x 2]}
@@ -217,21 +217,11 @@
 (test (interp-expr `{force {delay {force {delay {+ 3 1}}}}}) (numV 4))
 (test (interp-expr `{force {delay {+ 3 1}}}) (numV 4))
 (test (interp-expr `{force {delay { let {[t { let {[x 1]} { delay x} }]}
-                                     { let {[x 2]}
-                                        { force t} } }}}) (numV 1))
+                       { let {[x 2]}
+                          { force t} } }}}) (numV 1))
 (test/exn (interp-expr `{force {lambda {x} x}}) "not a thunk")
 (test (interp-expr `{let {[t {let {[x 1]} {delay x}}]}
-                      {let {[g {delay {let {[x 2]} {force t}}}]}
-                        {force g}}})
-      (numV 1))
+                        {let {[g {delay {let {[x 2]} {force t}}}]}
+                          {force g}}})
+        (numV 1))
 (test (interp-expr `{force {delay {delay 0}}}) (thunkV (numE 0) '()))
-(test (interp-expr `{let {[y 4]}
-                      {let {[y 3]}
-                        {let {[x 1]}
-                          {let {[x 2]}
-                            {unlet x {+ x {* y {unlet y {* x y}}}}}}}}})
-      (numV 13))
-(test (interp-expr `{let {[x 1]}
-                        {let {[x 2]}
-                          {unlet y x}}})
-        (numV 2))
