@@ -26,13 +26,16 @@
   [boxE (val : Exp)]
   [unboxE (b : Exp)]
   [setboxE (b : Exp) (val : Exp)]
-  [beginE (l : Exp) (r : (Listof Exp))])
+  [beginE (l : Exp) (r : (Listof Exp))]
+  [recordE (fields : (Listof Symbol)) (args : (Listof Exp))]
+  [getE (record : Exp) (field : Symbol)])
 
 ; Représentation des valeurs
 (define-type Value
   [numV (n : Number)]
   [closV (par : Symbol) (body : Exp) (env : Env)]
-  [boxV (l : Location)])
+  [boxV (l : Location)]
+  [recV (fields : (Listof Symbol)) (val : (Listof Value))])
 
 ; Représentation du résultat d'une évaluation
 (define-type Result
@@ -57,14 +60,14 @@
 ; Manipulation de la mémoire
 (define-type-alias Store (Listof Storage))
 (define mt-store empty)
-#;(define (override-store x l)
-    (cons x (filter (lambda (s) (equal? x s)) l)))
-
 (define (override-store x l)
-  (cond
-    [(empty? l) (cons x l)]
-    [(equal? (cell-location x) (cell-location (first l))) (override-store x (rest l))]
-    [else (cons x (override-store x (rest l)))]))
+  (cons x (filter (lambda (s) (equal? x s)) l)))
+
+#;(define (override-store x l)
+    (cond
+      [(empty? l) (cons x l)]
+      [(equal? (cell-location x) (cell-location (first l))) (override-store x (rest l))]
+      [else (cons x (override-store x (rest l)))]))
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ; Analyse syntaxique ;
@@ -98,6 +101,13 @@
     [(s-exp-match? `{set-box! ANY ANY} s)
      (let ([sl (s-exp->list s)])
        (setboxE (parse (second sl)) (parse (third sl))))]
+    [(s-exp-match? `{record [SYMBOL ANY] ...} s)
+     (let ([sl (s-exp->list s)])
+       (recordE (map (lambda (l) (s-exp->symbol (first (s-exp->list l)))) (rest sl))
+                (map (lambda (l) (parse (second (s-exp->list l)))) (rest sl))))]
+    [(s-exp-match? `{get ANY SYMBOL} s)
+     (let ([sl (s-exp->list s)])
+       (getE (parse (second sl)) (s-exp->symbol (third sl))))]
     [(s-exp-match? `{begin ANY ANY ...} s)
      (let ([sl (s-exp->list s)])
        (let [(mapped (map parse (rest sl)))]
@@ -151,13 +161,34 @@
               (with [(v-val sto-val) (interp val env sto-b)]
                     (v*s v-val (override-store (cell l v-val) sto-val)))]
              [else (error 'interp "not a box")]))]
-    [(beginE l r) (begin-eval l (v*s (numV 0) sto) env r sto)]))
+    [(beginE l r) (begin-eval l (interp l env sto) env r sto)]
+    [(getE rec fd)
+     (with [(v-b sto-b) (interp rec env sto)]
+           (type-case Value v-b
+             [(recV fds vs) (v*s (find fd fds vs) sto-b)]
+             [else (error 'interp "not a record")]))]
+    [(recordE fds args) (record-eval fds env args sto empty)]))
+
 
 (define (begin-eval old-val acc env args sto-inner)
   (if (empty? args)
       acc 
       (with [(v-l sto-b) (interp old-val env sto-inner)]
             (begin-eval (first args) (v*s (v*s-v (interp (first args) env sto-b)) sto-b) env (rest args) sto-b))))
+
+(define (record-eval fds env args sto-inner mt)
+  (if (empty? args)
+      (v*s (recV fds mt) sto-inner)
+      (with [(v-l sto-b) (interp (first args) env sto-inner)]
+            (record-eval fds env (rest args) sto-b (append mt (list v-l))))))
+
+(define (find [fd : Symbol] [fds : (Listof Symbol)] [vs : (Listof Value)]) : Value
+  (cond
+    [(empty? fds) (error 'interp "no such field")]
+    [(equal? fd (first fds)) (first vs)]
+    [else (find fd (rest fds) (rest vs))]))
+
+
 
 ; Fonctions utilitaires pour l'arithmétique
 (define (num-op [op : (Number Number -> Number)]
@@ -203,10 +234,6 @@
 (define (interp-expr [e : S-Exp]) : Value
   (v*s-v (interp (parse e) mt-env mt-store)))
 
-
-( test ( interp ( parse `{ set-box! { box 2} 3}) mt-env mt-store )
-       (v*s ( numV 3) ( list ( cell 1 ( numV 3)) ( cell 1 ( numV 2)))))
-
 ( test ( interp ( parse `{ set-box! { box 2} 3}) mt-env mt-store )
        (v*s ( numV 3) ( list ( cell 1 ( numV 3)))))
 ( test ( interp-expr `{ let {[b { box 0}]}
@@ -216,4 +243,26 @@
                             { set-box! b {+ 3 { unbox b} } }
                             { set-box! b {+ 8 { unbox b} } }
                             { set-box! b {* 3 { unbox b} } }}})
-       ( numV 13))
+       ( numV 39))
+
+(test (interp-expr `{let {[b {box 0}]}
+                      {begin
+                        {set-box! b {+ 1 {unbox b}}}
+                        }})
+      (numV 1))
+
+(test (interp-expr `{let {[r {record [x 1] [y 2]}]}
+                      {get r x}}) (numV 1))
+
+( test ( interp-expr `{ let {[a { box 1}]}
+                         { let {[r { record
+                                     [a { set-box! a {* 2 { unbox a} } }]
+                                     [b { set-box! a {* 2 { unbox a} } }]}]}
+                            {+ { unbox a} {+ { get r a} { get r b} } } } })
+       ( numV 10))
+(test (interp-expr `{let {[r {record [x 1] [y 2]}]}
+                      {get r y}}) (numV 2))
+(test (interp-expr `{let {[r {record [x 1] [y {+ 2 3}]}]}
+                      {get r y}}) (numV 5))
+(test (interp-expr `{let {[r {record [x 1]}]}
+                      {get r x}}) (numV 1))
