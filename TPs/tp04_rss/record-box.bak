@@ -23,7 +23,7 @@
 (define-type Value
   [numV (n : Number)]
   [closV (par : Symbol) (body : Exp) (env : Env)]
-  [recV (fields : (Listof Symbol)) (vals : (Listof Value))])
+  [recV (fields : (Listof Symbol)) (vals : (Listof (Boxof Value)))])
 
 ; Représentation des liaisons
 (define-type Binding
@@ -91,14 +91,16 @@
        [else (error 'interp "not a function")])]
     [(letE s rhs body) (interp body (extend-env (bind s (interp rhs env)) env))]
     [(recordE fds args)
-     (recV fds (map (lambda (expr) (interp expr env)) args))]
+     (recV fds (map (lambda (expr) (box (interp expr env))) args))]
     [(getE rec fd)
      (type-case Value (interp rec env)
-       [(recV fds vs) (find fd fds vs)]
+       [(recV fds vs) (unbox (find fd fds vs))]
        [else (error 'interp "not a record")])]
     [(setE rec fd arg)
      (type-case Value (interp rec env)
-       [(recV fds vs) (recV fds (update fd (interp arg env) fds vs))]
+       [(recV fds vs)
+        (let ([val (interp arg env)])
+          (begin (set-box! (find fd fds vs) val) val))]
        [else (error 'interp "not a record")])]))
 
 ; Fonctions utilitaires pour l'arithmétique
@@ -122,21 +124,11 @@
     [else (lookup s (rest env))]))
 
 ; Recherche un symbole dans une liste de symboles et renvoie la valeur associée
-(define (find [fd : Symbol] [fds : (Listof Symbol)] [vs : (Listof Value)]) : Value
+(define (find [fd : Symbol] [fds : (Listof Symbol)] [vs : (Listof (Boxof Value))]) : (Boxof Value)
   (cond
     [(empty? fds) (error 'interp "no such field")]
     [(equal? fd (first fds)) (first vs)]
     [else (find fd (rest fds) (rest vs))]))
-
-; Recherche un symbole dans une liste de symboles
-; Renvoie la liste initiale des valeurs avec modification
-; de la valeur associée au symbole fd par new-val
-(define (update [fd : Symbol] [new-val : Value]
-                [fds : (Listof Symbol)] [vs : (Listof Value)]) : (Listof Value)
-  (cond
-    [(empty? fds) (error 'interp "no such field")]
-    [(equal? fd (first fds)) (cons new-val (rest vs))]
-    [else (cons (first vs) (update fd new-val (rest fds) (rest vs)))]))
 
 ;;;;;;;;;
 ; Tests ;
@@ -144,22 +136,3 @@
 
 (define (interp-expr [e : S-Exp]) : Value
   (interp (parse e) mt-env))
-( test ( interp-expr `{ let {[a { box 1}]}
-                         { let {[r { record
-                                     [a { set-box! a {* 2 { unbox a} } }]
-                                     [b { set-box! a {* 2 { unbox a} } }]}]}
-                            {+ { unbox a} {+ { get r a} { get r b} } } } })
-       ( numV 10))
-(test (interp-expr `{let {[r {record [x 1] [y 2]}]}
-                      {get r x}}) (numV 1))
-( test ( interp-expr `{ let {[r { record [a 1]}]}
-                         { begin { set! r a 2} { get r a} } })
-       ( numV 2))
-( test ( interp-expr `{ let {[r { record [a 1] [b 2]}]}
-                         { begin
-                            { set! r a {+ { get r b} 3} }
-                            { set! r b {* { get r a} 4} }
-                            {+ { get r a} { get r b} } } })
-       ( numV 25))
-(interp-expr `{ let {[r { record [a 1] [b 2]}]}
-                   {set! r b 5}})
