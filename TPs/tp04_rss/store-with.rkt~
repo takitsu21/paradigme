@@ -169,7 +169,9 @@
     [(setE rec fd arg)
      (with [(v-b sto-b) (interp rec env sto)]
            (type-case Value v-b
-             [(recV fds vs) (update-all arg fd fds vs env sto-b empty)]
+             [(recV fds vs) (begin
+                              (let [(new-val (update fd (v*s-v (interp arg env sto-b)) fds vs))]
+                              (v*s (recV fds new-val) sto-b)))]
              [else (error 'interp "not a record")]))]
     [(getE rec fd)
      (with [(v-b sto-b) (interp rec env sto)]
@@ -177,12 +179,6 @@
              [(recV fds vs) (v*s (find fd fds vs) sto-b)]
              [else (error 'interp "not a record")]))]
     [(recordE fds args) (record-eval fds env args sto empty)]))
-
-(define (update-all arg fd fds vs env sto sto-mt)
-  (if (empty? sto)
-      (v*s (recV fds vs) sto-mt)
-      (update-all arg fd fds (update fd (fetch (cell-location (first sto)) sto) fds vs)
-                  env (rest sto) (override-store (cell (cell-location (first sto)) (fetch (cell-location (first sto)) sto)) sto-mt))))
 
 (define (update [fd : Symbol] [new-val : Value]
                 [fds : (Listof Symbol)] [vs : (Listof Value)]) : (Listof Value)
