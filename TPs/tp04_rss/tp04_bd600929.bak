@@ -312,6 +312,3 @@
                      { set! r a {+ { get r b} 3} }
                      { set! r c {* { get r c} 4} }
                      { set! r b {* { get r c} 4} }}})
-( test ( interp-expr `{ let {[r { record [a 1]}]}
-                         { begin { set! r a {+ { get r a} 1}} { get r a} } })
-       ( numV 2))
