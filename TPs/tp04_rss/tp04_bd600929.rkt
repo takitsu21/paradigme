@@ -36,7 +36,7 @@
   [numV (n : Number)]
   [closV (par : Symbol) (body : Exp) (env : Env)]
   [boxV (l : Location)]
-  [recV (fields : (Listof Symbol)) (val : (Listof Value))])
+  [recV (fields : (Listof Symbol)) (val : (Listof Location))])
 
 ; Représentation du résultat d'une évaluation
 (define-type Result
@@ -169,29 +169,18 @@
     [(setE rec fd arg)
      (with [(v-b sto-b) (interp rec env sto)]
            (type-case Value v-b
-             [(recV fds vs) (update-all arg fd fds vs env sto-b empty)]
+             [(recV fds vs)
+              (with [(v-c sto-c) (interp arg env sto-b)]
+                    (let [(new-l (find fd fds vs))]
+                      (v*s v-c (override-store (cell new-l v-c) sto-c))))]
              [else (error 'interp "not a record")]))]
     [(getE rec fd)
      (with [(v-b sto-b) (interp rec env sto)]
            (type-case Value v-b
-             [(recV fds vs) (v*s (find fd fds vs) sto-b)]
+             [(recV fds vs) (v*s (fetch (find fd fds vs) sto-b) sto-b)]
              [else (error 'interp "not a record")]))]
-    [(recordE fds args) (record-eval fds env args sto empty)]))
-
-(define (update-all arg fd fds vs env sto sto-mt)
-  (if (empty? sto)
-      (v*s (recV fds vs) sto-mt)
-      (update-all arg fd fds (update fd (fetch (cell-location (first sto)) sto) fds vs)
-                  env (rest sto) (override-store (cell (cell-location (first sto)) (fetch (cell-location (first sto)) sto)) sto-mt))))
-
-(define (update [fd : Symbol] [new-val : Value]
-                [fds : (Listof Symbol)] [vs : (Listof Value)]) : (Listof Value)
-  (cond
-    [(empty? fds) (error 'interp "no such field")]
-    [(equal? fd (first fds)) (cons new-val (rest vs))]
-    [else (cons (first vs) (update fd new-val (rest fds) (rest vs)))]))
-
-
+    [(recordE fds args) (record-eval fds env args sto mt-store)]))
+ 
 (define (begin-eval old-val env args sto-inner)
   (if (empty? args)
       (interp old-val env sto-inner)
@@ -202,9 +191,10 @@
   (if (empty? args)
       (v*s (recV fds mt) sto-inner)
       (with [(v-l sto-b) (interp (first args) env sto-inner)]
-            (record-eval fds env (rest args) sto-b (append mt (list v-l))))))
+            (let [(l (new-loc sto-b))]
+              (record-eval fds env (rest args) (override-store (cell l v-l) sto-b) (append mt (list l)))))))
 
-(define (find [fd : Symbol] [fds : (Listof Symbol)] [vs : (Listof Value)]) : Value
+(define (find [fd : Symbol] [fds : (Listof Symbol)] [vs : (Listof 'a)]) : 'a
   (cond
     [(empty? fds) (error 'interp "no such field")]
     [(equal? fd (first fds)) (first vs)]
