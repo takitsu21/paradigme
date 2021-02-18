@@ -234,9 +234,6 @@
                              x}})
       (numV 2))
 
-(test (interp-expr `{let {[x 0]}
-                      {let {[y 1]} {content 2}}}) (numV 1))
-
 (test (interp-expr `{let [{x 0}]
                       {set-content! {set! x 1} {+ x 1}}})
       (numV 2))
@@ -249,8 +246,6 @@
 
 ( test/exn (interp-expr `{ let {[p { malloc -3}]} p})
            "not a size")
-
-
 
 #;( test ( interp ( parse `{ let {[p { malloc 3}]} p}) mt-env mt-store )
          (v*s ( numV 1) ( store ( list ( cell 4 ( numV 1))

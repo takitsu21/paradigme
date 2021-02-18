@@ -285,6 +285,9 @@
                       {get r x}}) (numV 1))
 (test/exn (interp-expr `{{record [x 0]} 1}) "not a function")
 (test/exn (interp-expr `{+ {record [x 0]} 1}) "not a number")
+(test/exn (interp-expr `{let {[a 2]}
+                          {get a a}})
+          "not a record")
 (test (interp-expr `{let {[b1 {box 1}]}
                       {let {[b2 {box 2}]}
                         {let {[v {set-box! b1 3}]}
