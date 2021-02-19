@@ -318,3 +318,7 @@
 ( test ( interp-expr `{ let {[r { record [a 1]}]}
                          { begin { set! r a {+ { get r a} 1}} { get r a} } })
        ( numV 2))
+(test (interp-expr `{let {[r {record [a 0]}]}
+  {let {[b {box 1}]}
+    {let {[osef {get r a}]}
+      {unbox b}}}}) (numV 1))

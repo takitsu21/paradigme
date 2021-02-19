@@ -182,26 +182,43 @@
     [(freeE expr)
      (if (empty? (store-pointers sto))
          (error 'interp "not an allocated pointer")
-         (with [(v-b sto-b) (interp expr env sto)]
-               (begin
-                 (display "to")
-                 (display (pointer-loc (first (store-pointers sto-b))))
-                 (display "\nfrom")
-                 (display (cell-location (first (store-storages sto-b))))
-                 (display "\n")
-               (v*s (numV 0) (free-aux (store-pointers sto-b) (store-storages sto-b) empty (pointer-loc (first (store-pointers sto-b)))
-                                       (cell-location (first (store-storages sto-b))))))))]))
+         (with [(ptr sto-b) (interp expr env sto)]
+                 
+               (let [(pointer (find-p (numV-n ptr) (store-pointers sto-b)))]
+                 (let [(storage (find-storage-by-pointer pointer (store-storages sto-b)))]
+                     (v*s (numV 0) (free-aux (store-pointers sto-b)
+                                             (store-storages sto-b)
+                                             empty
+                                             pointer
+                                             (cell-location storage)
+                                             (numV-n (cell-val storage))
+                                             ))))))]))
 
-
-
-(define (free-aux pointers storages acc to from)
+(define (delete-p loc pointers acc)
   (cond
-    [(empty? storages) (store acc (rest pointers))]
-    [(and (>= from to) (equal? 0 (numV-n (cell-val (first storages)))))
-     (free-aux pointers (rest storages) acc to (- from 1))]
-    [(= from to) (free-aux pointers (rest storages) (cons (first storages) acc) (pointer-size (first pointers)) (cell-location (first storages)))]
-    [else (begin
-            (free-aux pointers (rest storages) (cons (first storages) acc) to (- from 1)))]))
+    [(empty? pointers) acc]
+    [(equal? loc (pointer-loc (first pointers))) (append acc (rest pointers))]
+    [else (delete-p loc (rest pointers) (cons (first pointers) acc))]))
+
+(define (find-storage-by-pointer pointer storages)
+  (cond
+    [(empty? storages) (error 'interp "not an allocated pointer")]
+    [(equal? (pointer-loc pointer) (numV-n (cell-val (first storages)))) (first storages)]
+    [else (find-storage-by-pointer pointer (rest storages))]))
+
+(define (find-p loc pointers)
+  (cond
+    [(empty? pointers) (error 'interp "not an allocated pointer")]
+    [(equal? loc (pointer-loc (first pointers))) (first pointers)]
+    [else (find-p loc (rest pointers))]))
+
+(define (free-aux pointers storages acc pointer from to)
+  (begin
+    (cond
+      [(empty? storages) (store (reverse acc) (delete-p (pointer-loc pointer) pointers empty))]
+      [(and (<= (cell-location (first storages)) from) (>= (cell-location (first storages)) to) (equal? 0 (numV-n (cell-val (first storages)))))
+       (free-aux pointers (rest storages) acc pointer from to)]
+      [else (free-aux pointers (rest storages) (cons (first storages) acc) pointer from to)])))
 
 (define (malloc-dyn n sto start alloc)
   (if (= n 0)
@@ -291,22 +308,69 @@
                     mt-env
                     mt-store )
            "not an allocated pointer")
-( test ( interp ( parse `{ let {[p { malloc 3}]}
-                            {let {[c {malloc 4}]}
-                              {let {[a {malloc 5}]}
-                                {begin
-                                  {free p}
-                                  {free a}}}}})
-                mt-env
-                mt-store )
-       (v*s (numV 0) (store (list
-                             (cell 12 (numV 10))
-                             (cell 9 (numV 5))
-                             (cell 4 (numV 1))
-                             (cell 3 (numV 0))
-                             (cell 2 (numV 0))
-                             (cell 1 (numV 0)))
-                            (list (pointer 1 3)))))
+
 (test/exn (interp-expr `{let {[a {malloc 8}]}
                           {free z}})
-          "not an allocated pointer")
+          "free identifier")
+#;(interp-expr `{ let {[p { malloc 3}]}
+                   {let {[c {malloc 4}]}
+                     {let {[a {malloc 5}]}
+                       {begin
+                         {free p}
+                         {free a}}}}})
+
+
+(test (interp (parse `{let {[p {malloc 3}]}
+                        {let {[c {malloc 4}]}
+                          (free p)}}) mt-env mt-store)
+      (v*s (numV 0) (store (list (cell 9 (numV 5))
+                                 (cell 8 (numV 0))
+                                 (cell 7 (numV 0))
+                                 (cell 6 (numV 0))
+                                 (cell 5 (numV 0))
+                                 (cell 4 (numV 1)))
+                           (list (pointer 5 4)))))
+(test (interp (parse `{ let {[p { malloc 3}]}
+                         {let {[c {malloc 4}]}
+                           {let {[a {malloc 5}]}
+                             {begin
+                               {free p}
+                               {free a}}}}}) mt-env mt-store) (v*s (numV 0) (store
+                                                                             (list (cell 15 (numV 10))
+                                                                                   (cell 9 (numV 5))
+                                                                                   (cell 8 (numV 0))
+                                                                                   (cell 7 (numV 0))
+                                                                                   (cell 6 (numV 0))
+                                                                                   (cell 5 (numV 0))
+                                                                                   (cell 4 (numV 1)))
+                                                                             (list (pointer 5 4))
+                                                                             )))
+(test (interp (parse `{ let {[p { malloc 3}]}
+                         {let {[c {malloc 4}]}
+                           {let {[a {malloc 5}]}
+                             {begin
+                               {free a}
+                               {free c}}}}}) mt-env mt-store) (v*s (numV 0) (store
+                                                                             (list (cell 15 (numV 10))
+                                                                                   (cell 9 (numV 5))
+                                                                                   (cell 4 (numV 1))
+                                                                                   (cell 3 (numV 0))
+                                                                                   (cell 2 (numV 0))
+                                                                                   (cell 1 (numV 0)))
+                                                                             (list (pointer 1 3)))))
+(test (interp (parse `{ let {[p { malloc 3}]}
+                         {let {[c {malloc 4}]}
+                           {let {[a {malloc 5}]}
+                             {free c}}}}) mt-env mt-store) (v*s (numV 0) (store
+                                                                             (list (cell 15 (numV 10))
+                                                                                   (cell 14 (numV 0))
+                                                                                   (cell 13 (numV 0))
+                                                                                   (cell 12 (numV 0))
+                                                                                   (cell 11 (numV 0))
+                                                                                   (cell 10 (numV 0))
+                                                                                   (cell 9 (numV 5))
+                                                                                   (cell 4 (numV 1))
+                                                                                   (cell 3 (numV 0))
+                                                                                   (cell 2 (numV 0))
+                                                                                   (cell 1 (numV 0)))
+                                                                             (list (pointer 10 5) (pointer 1 3)))))
