@@ -176,21 +176,32 @@
                                              (v*s v-c (override-store (cell (numV-n v-b) v-c) sto-c)))
                                        (error 'interp "segmentation fault")))]
     [(mallocE expr) (with [(v-b sto-b) (interp expr env sto)]
-                          (if (and (numV? v-b) (integer? (numV-n v-b)) (> (numV-n v-b) 0))
+                          (if (and (numV? v-b) (integer? (numV-n v-b)) (>= (numV-n v-b) 0))
                               (malloc-dyn (numV-n v-b) sto-b (numV-n v-b) empty)
                               (error 'interp "not a size")))]
     [(freeE expr)
      (if (empty? (store-pointers sto))
          (error 'interp "not an allocated pointer")
-         (v*s (numV 0) (free-aux (store-pointers sto) (store-storages sto) empty)))]))
+         (with [(v-b sto-b) (interp expr env sto)]
+               (begin
+                 (display "to")
+                 (display (pointer-loc (first (store-pointers sto-b))))
+                 (display "\nfrom")
+                 (display (cell-location (first (store-storages sto-b))))
+                 (display "\n")
+               (v*s (numV 0) (free-aux (store-pointers sto-b) (store-storages sto-b) empty (pointer-loc (first (store-pointers sto-b)))
+                                       (cell-location (first (store-storages sto-b))))))))]))
 
 
 
-(define (free-aux pointers storages acc)
+(define (free-aux pointers storages acc to from)
   (cond
     [(empty? storages) (store acc (rest pointers))]
-    [(equal? 0 (numV-n (cell-val (first storages)))) (free-aux pointers (rest storages) acc)]
-    [else (free-aux pointers (rest storages) (cons (first storages) acc))]))
+    [(and (>= from to) (equal? 0 (numV-n (cell-val (first storages)))))
+     (free-aux pointers (rest storages) acc to (- from 1))]
+    [(= from to) (free-aux pointers (rest storages) (cons (first storages) acc) (pointer-size (first pointers)) (cell-location (first storages)))]
+    [else (begin
+            (free-aux pointers (rest storages) (cons (first storages) acc) to (- from 1)))]))
 
 (define (malloc-dyn n sto start alloc)
   (if (= n 0)
@@ -256,15 +267,15 @@
                       {set-content! {set! x 1} {+ x 1}}})
       (numV 2))
 
-( test ( interp ( parse `{ let {[p { malloc 3}]} p}) mt-env mt-store )
-       (v*s ( numV 1) (store ( list ( cell 4 ( numV 1)) ; addresse de p
-                                    ( cell 3 ( numV 0))
-                                    ( cell 2 ( numV 0))
-                                    ( cell 1 ( numV 0)))
-                             empty)))
 
 ( test/exn (interp-expr `{ let {[p { malloc -3}]} p})
            "not a size")
+
+( test ( interp ( parse `{ let {[p { malloc 3}]} { free p} })
+                mt-env
+                mt-store )
+       (v*s ( numV 0) ( store ( list ( cell 4 ( numV 1)))
+                              empty )))
 
 ( test ( interp ( parse `{ let {[p { malloc 3}]} p}) mt-env mt-store )
        (v*s ( numV 1) ( store ( list ( cell 4 ( numV 1))
@@ -272,14 +283,6 @@
                                      ( cell 2 ( numV 0))
                                      ( cell 1 ( numV 0)))
                               ( list ( pointer 1 3)))))
-
-
-
-( test ( interp ( parse `{ let {[p { malloc 3}]} { free p} })
-                mt-env
-                mt-store )
-       (v*s ( numV 0) ( store ( list ( cell 4 ( numV 1)))
-                              empty )))
 
 ( test/exn ( interp ( parse `{ let {[p { malloc 3}]}
                                 {begin
@@ -288,24 +291,22 @@
                     mt-env
                     mt-store )
            "not an allocated pointer")
-
-( test ( interp ( parse `{ let {[p { malloc 3}]} p}) mt-env mt-store )
-       (v*s ( numV 1) ( store ( list ( cell 4 ( numV 1))
-                                     ( cell 3 ( numV 0))
-                                     ( cell 2 ( numV 0))
-                                     ( cell 1 ( numV 0)))
-                              ( list ( pointer 1 3)))))
-( test ( interp ( parse `{ let {[p { malloc 3}]} { free p} })
-                mt-env
-                mt-store )
-       (v*s ( numV 0) ( store ( list ( cell 4 ( numV 1)))
-                              empty )))
-(test/exn (interp-expr `{let {[x 0]} {content -4}}) "segmentation fault")
-
 ( test ( interp ( parse `{ let {[p { malloc 3}]}
-                            {let {[c {malloc 6}]}
-                              {free c}}})
+                            {let {[c {malloc 4}]}
+                              {let {[a {malloc 5}]}
+                                {begin
+                                  {free p}
+                                  {free a}}}}})
                 mt-env
                 mt-store )
-       (v*s ( numV 0) ( store ( list ( cell 4 ( numV 1)))
-                              empty )))
+       (v*s (numV 0) (store (list
+                             (cell 12 (numV 10))
+                             (cell 9 (numV 5))
+                             (cell 4 (numV 1))
+                             (cell 3 (numV 0))
+                             (cell 2 (numV 0))
+                             (cell 1 (numV 0)))
+                            (list (pointer 1 3)))))
+(test/exn (interp-expr `{let {[a {malloc 8}]}
+                          {free z}})
+          "not an allocated pointer")
