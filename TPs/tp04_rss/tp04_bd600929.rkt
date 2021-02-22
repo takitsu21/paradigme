@@ -308,13 +308,6 @@
                             { set! r b {* { get r a} 4} }
                             {+ { get r a} { get r b} } } })
        ( numV 25))
-(interp-expr `{ let {[r { record [a 1] [b 2]}]}
-                 {set! r a 5}})
-( interp-expr `{ let {[r { record [a 1] [b 2] [c 5]}]}
-                  { begin
-                     { set! r a {+ { get r b} 3} }
-                     { set! r c {* { get r c} 4} }
-                     { set! r b {* { get r c} 4} }}})
 ( test ( interp-expr `{ let {[r { record [a 1]}]}
                          { begin { set! r a {+ { get r a} 1}} { get r a} } })
        ( numV 2))
@@ -322,3 +315,7 @@
   {let {[b {box 1}]}
     {let {[osef {get r a}]}
       {unbox b}}}}) (numV 1))
+(test (interp (parse `{begin
+                        {box 2}
+                        {set-box! {box 5} 6}}) mt-env  mt-store)
+      (v*s (numV 6) (list (cell 1 (numV 2)) (cell 2 (numV 6)))))
