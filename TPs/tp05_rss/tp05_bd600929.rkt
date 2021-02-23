@@ -399,4 +399,11 @@
                                (free p))))))))
            mt-env
            mt-store)
-   (v*s (numV 0) (store (list (cell 2 (numV 1))) '())))
+   (v*s (numV 0) (store (list (cell 2 (numV 1))) '())))(test
+   (interp (parse `(let ([p (malloc 3)])
+                     (begin
+                       (set-content! (+ p 1) 42)
+                       (free p))))
+           mt-env
+           mt-store)
+   (v*s (numV 0) (store (list (cell 4 (numV 1))) '())))

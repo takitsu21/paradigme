@@ -124,10 +124,14 @@
                                (error 'desugar "not implemented"))]
     [(add1S) (lamE 'n
                    (lamE 'f
-                         (lamE 'x (desugar (appS (idS 'f) (list (idS 'f)))))))]
+                         (lamE 'x (appE (idE 'f) (desugar (appS (appS (idS 'n) (list (idS 'f))) (list (idS 'x))))))))]
     [(numS n) (num-aux n (idE 'x))]
+    ;[(plusS) (lamE 'n (desugar (appS (appS (add1S) (list (add1S))) (list (add1S)))))]
+    [(plusS) (desugar (appS (appS (add1S) (list (idS 'f))) (list (idS 'x))))]
 
     [else (error 'desugar "not implemented")]))
+
+;(expr->string (desugar (parse `{+ 1 2})))
 
 ;;;;;;;;;;;;;;;;;;
 ; Interprétation ;
@@ -223,7 +227,7 @@
  (expr->string ( desugar ( parse `{ let {[x a] [y b] [z c]} body })))
  "(λx.λy.λz.body) a b c")
 ( test ( interp-number `10) 10)
-( test ( interp-number `{ add 1 1}) 2)
+( test ( interp-number `{ add1 1}) 2)
 ( test ( interp-number `{+ 1 2}) 3)
 ( test ( interp-number `{* 3 4}) 12)
 ;( test ( interp-boolean ` true ) #t)
