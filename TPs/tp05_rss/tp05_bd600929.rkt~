@@ -69,16 +69,16 @@
   (store empty empty))
 
 
-(define (override-store c l)
+#;(define (override-store c l)
     (store (override-store-aux c (store-storages l)) (store-pointers l)))
 
-(define (override-store-aux x l)
+#;(define (override-store-aux x l)
     (cond
       [(empty? l) (cons x l)]
       [(equal? (cell-location x) (cell-location (first l))) (cons x (rest l))]
       [else (cons (first l) (override-store-aux x (rest l)))]))
 
-#;(define (override-store x sto)
+(define (override-store x sto)
   (store (cons x (store-storages sto)) (store-pointers sto)))
 
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -384,19 +384,3 @@
 (test/exn (interp-expr `{let {[x 0]} {content 0}}) "segmentation fault")
 ( test/exn (interp-expr `{ let {[p { malloc 0}]} p})
            "not a size")
-(test
-   (interp (parse `(let ([p (malloc 1)])
-                     (begin
-                       (set-content! p 1)
-                       (begin
-                         (set-content! p 2)
-                         (begin
-                           (set-content! p 3)
-                           (begin
-                             (set-content! p 4)
-                             (begin
-                               (set-content! p 5)
-                               (free p))))))))
-           mt-env
-           mt-store)
-   (v*s (numV 0) (store (list (cell 2 (numV 1))) '())))

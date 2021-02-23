@@ -92,40 +92,39 @@
 ; Retrait du sucre syntaxique ;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (num-aux n body)
-  (if (= n 0)
-      (lamE 'f (lamE 'x body))
-      (num-aux (- n 1) (appE (idE 'f) body))))
-
 (define (lam-aux pars body)
   (if (= (length pars) 1)
       (lamE (first pars) (desugar body))
       (lamE (first pars) (lam-aux (rest pars) body))))
 
-(define (app-aux args fun)
+#;(define (app-aux args acc)
   (if (= (length args) 1)
-      (appE fun (desugar (first args)))
-      (appE (app-aux (rest args) fun) (desugar (first args)))))
+      (desugar (first args))
+      (desugar (app-aux (first args)))))
 
-;(define add-aux
-;  (
+(define (Foldr [f : ('a 'b -> 'b)]
+               [acc : 'b]
+               [L : (Listof 'a)]) : 'b
+  (if (empty? L)
+      acc
+      (f (first L) (Foldr f acc (rest L)))))
+
+(define (Foldl [f : ('a 'b -> 'b)]
+               [acc : 'b]
+               [L : (Listof 'a)]) : 'b
+  (if (empty? L)
+      acc
+      (Foldl f (f (first L) acc) (rest L))))
 
 (define (desugar [e : ExpS]) : Exp
   (type-case ExpS e
     [(idS s) (idE s)]
-    [(lamS pars body) (if (>= (length pars) 1)
+    [(lamS pars body) (if (> (length pars) 1)
                           (lam-aux pars body)
                           (error 'desugar "not implemented"))]
-    [(appS fun args) (if (>= (length args) 1)
-                         (app-aux (reverse args) (desugar fun))
+    [(appS fun args) (if (> (length args) 1)
+                           (appE (desugar fun) (desugar (first args)))
                          (error 'desugar "not implemented"))]
-    [(letS pars args body) (if (>= (length args) 1)
-                               (app-aux (reverse args) (lam-aux pars body))
-                               (error 'desugar "not implemented"))]
-    [(add1S) (lamE 'n
-                   (lamE 'f
-                         (lamE 'x (desugar (appS (idS 'f) (list (idS 'f)))))))]
-    [(numS n) (num-aux n (idE 'x))]
 
     [else (error 'desugar "not implemented")]))
 
@@ -226,21 +225,21 @@
 ( test ( interp-number `{ add 1 1}) 2)
 ( test ( interp-number `{+ 1 2}) 3)
 ( test ( interp-number `{* 3 4}) 12)
-;( test ( interp-boolean ` true ) #t)
-;( test ( interp-boolean ` false ) #f)
-;( test ( interp-number `{ if true 0 1}) 0)
-;( test ( interp-number `{ if false 0 1}) 1)
-;( test ( interp-boolean `{ zero ? 0}) #t)
-;( test ( interp-boolean `{ zero ? 1}) #f)
-;( test ( interp ( desugar ( parse `{ fst { pair a b} }))) (idE 'a))
-;( test ( interp ( desugar ( parse `{ snd { pair a b} }))) (idE 'b))
-;( test ( interp-number `{ sub 1 2}) 1)
-;( test ( interp-number `{- 4 2}) 2)
-;( test ( interp-number `{- 1 2}) 0)
-;( test ( interp-number
-;         `{ letrec {[fac { lambda {n}
-;                            { if { zero ? n}
-;                                 1
-;                                 {* n { fac {- n 1} } } } }]}
-;             { fac 6} })
-;       720)
+( test ( interp-boolean ` true ) #t)
+( test ( interp-boolean ` false ) #f)
+( test ( interp-number `{ if true 0 1}) 0)
+( test ( interp-number `{ if false 0 1}) 1)
+( test ( interp-boolean `{ zero ? 0}) #t)
+( test ( interp-boolean `{ zero ? 1}) #f)
+( test ( interp ( desugar ( parse `{ fst { pair a b} }))) (idE 'a))
+( test ( interp ( desugar ( parse `{ snd { pair a b} }))) (idE 'b))
+( test ( interp-number `{ sub 1 2}) 1)
+( test ( interp-number `{- 4 2}) 2)
+( test ( interp-number `{- 1 2}) 0)
+( test ( interp-number
+         `{ letrec {[fac { lambda {n}
+                            { if { zero ? n}
+                                 1
+                                 {* n { fac {- n 1} } } } }]}
+             { fac 6} })
+       720)
