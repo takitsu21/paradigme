@@ -126,12 +126,29 @@
                    (lamE 'f
                          (lamE 'x (appE (idE 'f) (desugar (appS (appS (idS 'n) (list (idS 'f))) (list (idS 'x))))))))]
     [(numS n) (num-aux n (idE 'x))]
-    ;[(plusS) (lamE 'n (desugar (appS (appS (add1S) (list (add1S))) (list (add1S)))))]
-    [(plusS) (desugar (appS (appS (add1S) (list (idS 'f))) (list (idS 'x))))]
-
+    [(plusS) (lamE 'n
+                   (lamE 'm
+                         (appE (appE (idE 'm) (desugar (add1S))) (idE 'n))))]
+    [(multS) (lamE 'n
+                   (lamE 'm
+                         (appE (appE (idE 'm) (desugar (appS (plusS) (list (idS 'n))))) (desugar (numS 0)))))]
+    [(ifS cnd l r) (appE (appE
+                          (desugar cnd)
+                          (desugar l))
+                         (desugar r))]
+    [(trueS) (lamE 'x
+                   (lamE 'y
+                         (idE 'x)))]
+    [(falseS) (lamE 'x
+                    (lamE 'y
+                          (idE 'y)))]
+    [(zeroS) (lamE 'n
+                   (appE
+                    (appE (idE 'n) (lamE 'x (desugar (falseS))))
+                    (desugar (trueS))))]
     [else (error 'desugar "not implemented")]))
 
-;(expr->string (desugar (parse `{+ 1 2})))
+;(expr->string (desugar (parse `{ zero? 0})))
 
 ;;;;;;;;;;;;;;;;;;
 ; Interprétation ;
@@ -230,14 +247,15 @@
 ( test ( interp-number `{ add1 1}) 2)
 ( test ( interp-number `{+ 1 2}) 3)
 ( test ( interp-number `{* 3 4}) 12)
-;( test ( interp-boolean ` true ) #t)
-;( test ( interp-boolean ` false ) #f)
-;( test ( interp-number `{ if true 0 1}) 0)
-;( test ( interp-number `{ if false 0 1}) 1)
-;( test ( interp-boolean `{ zero ? 0}) #t)
-;( test ( interp-boolean `{ zero ? 1}) #f)
-;( test ( interp ( desugar ( parse `{ fst { pair a b} }))) (idE 'a))
-;( test ( interp ( desugar ( parse `{ snd { pair a b} }))) (idE 'b))
+( test ( interp-boolean `true ) #t)
+( test ( interp-boolean `false ) #f)
+
+( test ( interp-number `{ if true 5 1}) 5)
+( test ( interp-number `{ if false 0 7}) 7)
+( test ( interp-boolean `{ zero? 0}) #t)
+( test ( interp-boolean `{ zero? 1}) #f)
+( test ( interp ( desugar ( parse `{ fst { pair a b} }))) (idE 'a))
+( test ( interp ( desugar ( parse `{ snd { pair a b} }))) (idE 'b))
 ;( test ( interp-number `{ sub 1 2}) 1)
 ;( test ( interp-number `{- 4 2}) 2)
 ;( test ( interp-number `{- 1 2}) 0)
