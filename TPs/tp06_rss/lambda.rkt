@@ -107,8 +107,18 @@
       (appE fun (desugar (first args)))
       (appE (app-aux (rest args) fun) (desugar (first args)))))
 
-;(define add-aux
-;  (
+
+(define (shift-aux)
+  (lamE 'p
+        (appE
+         (appE
+          (desugar (pairS))
+          (appE (desugar (sndS)) (idE 'p)))
+         (appE
+          (desugar (add1S))
+          (appE
+           (desugar (sndS))
+           (idE 'p))))))
 
 (define (desugar [e : ExpS]) : Exp
   (type-case ExpS e
@@ -146,10 +156,40 @@
                    (appE
                     (appE (idE 'n) (lamE 'x (desugar (falseS))))
                     (desugar (trueS))))]
+    [(pairS) (lamE 'x
+                   (lamE 'y
+                         (lamE 'sel (desugar (appS
+                                              (appS (idS 'sel) (list (idS 'x)))
+                                              (list (idS 'y)))))))]
+    [(fstS) (lamE 'p (appE (idE 'p) (desugar (trueS))))]
+    [(sndS) (lamE 'p (appE (idE 'p) (desugar (falseS))))]
+    [(sub1S) (lamE 'n
+                   (appE
+                    (desugar (fstS))
+                    (appE
+                     (appE (idE 'n) (shift-aux))
+                     (desugar
+                      (appS
+                       (appS (pairS) (list (numS 0))) (list (numS 0)))))))]
+    [(minusS) (lamE 'n
+                    (lamE 'm
+                          (appE (appE (idE 'm) (desugar (sub1S))) (idE 'n))))]
+    [(letrecS par arg body) (lamE par
+                                     (appE
+                                     (desugar body) (desugar arg)))]
+                   
     [else (error 'desugar "not implemented")]))
 
-;(expr->string (desugar (parse `{ zero? 0})))
-
+#;(expr->string ( desugar ( parse `{ letrec {[fac { lambda {n}
+                                                     { if { zero? n}
+                                                          1
+                                                          {* n { fac {- n 1} } } } }]}
+                                      { fac 6} })))
+#;( parse `{ letrec {[fac { lambda {n}
+                             { if { zero? n}
+                                  1
+                                  {* n { fac {- n 1} } } } }]}
+              { fac 6} })
 ;;;;;;;;;;;;;;;;;;
 ; Interprétation ;
 ;;;;;;;;;;;;;;;;;;
@@ -256,13 +296,13 @@
 ( test ( interp-boolean `{ zero? 1}) #f)
 ( test ( interp ( desugar ( parse `{ fst { pair a b} }))) (idE 'a))
 ( test ( interp ( desugar ( parse `{ snd { pair a b} }))) (idE 'b))
-;( test ( interp-number `{ sub 1 2}) 1)
-;( test ( interp-number `{- 4 2}) 2)
-;( test ( interp-number `{- 1 2}) 0)
-;( test ( interp-number
-;         `{ letrec {[fac { lambda {n}
-;                            { if { zero ? n}
-;                                 1
-;                                 {* n { fac {- n 1} } } } }]}
-;             { fac 6} })
-;       720)
+( test ( interp-number `{ sub1 2}) 1)
+( test ( interp-number `{- 4 2}) 2)
+( test ( interp-number `{- 1 2}) 0)
+( test ( interp-number
+         `{ letrec {[fac { lambda {n}
+                            { if { zero? n}
+                                 1
+                                 {* n { fac {- n 1} } } } }]}
+             { fac 6} })
+       720)
