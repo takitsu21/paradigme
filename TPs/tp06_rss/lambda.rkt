@@ -120,6 +120,39 @@
            (desugar (sndS))
            (idE 'p))))))
 
+#;(define (fX)
+  (lamE 'fX
+        (lamE 'fX
+              (appE
+               (lamE 'x (appE (idE 'x) (appE (idE 'f) (idE 'f))))
+               (idE 'x)))))
+
+
+(define (fX)
+  (lamE 'body-proc
+        (appE
+         (lamE 'fX (appE (idE 'fX) (idE 'fX)))
+         (lamE 'fX (appE
+                    (lamE 'f
+                          (appE
+                           (idE 'body-proc)
+                           (idE 'f)))
+                    (lamE 'x (appE (appE (idE 'fX) (idE 'fX)) (idE 'x))))))))
+
+;((λbody-proc.(λfX.fX fX)(λfX.(λf.body-proc f)(λx.fX fX x)))
+
+(define (name)
+  (lamE 'x
+        (appE
+         (idE 'x)
+         (desugar (appS (appS (idS 'f) (list (idS 'f))) (list (idS 'x)))))))
+
+(define (mk-rec)
+  (lamE 'body-proc
+        (appE (fX) (fX))))
+
+;(expr->string (fX))
+
 (define (desugar [e : ExpS]) : Exp
   (type-case ExpS e
     [(idS s) (idE s)]
@@ -142,10 +175,11 @@
     [(multS) (lamE 'n
                    (lamE 'm
                          (appE (appE (idE 'm) (desugar (appS (plusS) (list (idS 'n))))) (desugar (numS 0)))))]
-    [(ifS cnd l r) (appE (appE
-                          (desugar cnd)
-                          (desugar l))
-                         (desugar r))]
+    [(ifS cnd l r) (appE
+                    (appE
+                     (appE (desugar cnd) (lamE 'd (desugar l)))
+                     (lamE 'd (desugar r)))
+                    (idE '_))]
     [(trueS) (lamE 'x
                    (lamE 'y
                          (idE 'x)))]
@@ -174,10 +208,9 @@
     [(minusS) (lamE 'n
                     (lamE 'm
                           (appE (appE (idE 'm) (desugar (sub1S))) (idE 'n))))]
-    [(letrecS par arg body) (lamE par
-                                     (appE
-                                     (desugar body) (desugar arg)))]
-                   
+    [(letrecS par arg body) (appE
+                             (lamE par (desugar body))
+                             (appE (fX) (lamE par (desugar arg))))]
     [else (error 'desugar "not implemented")]))
 
 #;(expr->string ( desugar ( parse `{ letrec {[fac { lambda {n}
