@@ -120,14 +120,6 @@
            (desugar (sndS))
            (idE 'p))))))
 
-#;(define (fX)
-  (lamE 'fX
-        (lamE 'fX
-              (appE
-               (lamE 'x (appE (idE 'x) (appE (idE 'f) (idE 'f))))
-               (idE 'x)))))
-
-
 (define (fX)
   (lamE 'body-proc
         (appE
@@ -141,15 +133,6 @@
 
 ;((λbody-proc.(λfX.fX fX)(λfX.(λf.body-proc f)(λx.fX fX x)))
 
-(define (name)
-  (lamE 'x
-        (appE
-         (idE 'x)
-         (desugar (appS (appS (idS 'f) (list (idS 'f))) (list (idS 'x)))))))
-
-(define (mk-rec)
-  (lamE 'body-proc
-        (appE (fX) (fX))))
 
 ;(expr->string (fX))
 
@@ -177,8 +160,8 @@
                          (appE (appE (idE 'm) (desugar (appS (plusS) (list (idS 'n))))) (desugar (numS 0)))))]
     [(ifS cnd l r) (appE
                     (appE
-                     (appE (desugar cnd) (lamE 'd (desugar l)))
-                     (lamE 'd (desugar r)))
+                     (appE (desugar cnd) (lamE '_ (desugar l)))
+                     (lamE '_ (desugar r)))
                     (idE '_))]
     [(trueS) (lamE 'x
                    (lamE 'y
@@ -211,6 +194,11 @@
     [(letrecS par arg body) (appE
                              (lamE par (desugar body))
                              (appE (fX) (lamE par (desugar arg))))]
+    #;[(divS) (appE (desugar (add1S))
+                  (appE (desugar (plusS))
+                        (lamE 'm
+                              (lamE 'n
+                                    (appE (idE 'n) (idE 'm))))))]
     [else (error 'desugar "not implemented")]))
 
 #;(expr->string ( desugar ( parse `{ letrec {[fac { lambda {n}
@@ -332,6 +320,7 @@
 ( test ( interp-number `{ sub1 2}) 1)
 ( test ( interp-number `{- 4 2}) 2)
 ( test ( interp-number `{- 1 2}) 0)
+( test ( interp-number `{/ 2 2}) 1)
 ( test ( interp-number
          `{ letrec {[fac { lambda {n}
                             { if { zero? n}
@@ -339,3 +328,10 @@
                                  {* n { fac {- n 1} } } } }]}
              { fac 6} })
        720)
+( test ( interp-number
+         `{ letrec {[fac { lambda {n} {lambda {b}
+                                        { if { zero? n}
+                                             1
+                                             {+ b { fac {- n 1} {+ b 1} } }} }}]}
+             { fac 3 0} })
+       4)
