@@ -194,12 +194,21 @@
     [(letrecS par arg body) (appE
                              (lamE par (desugar body))
                              (appE (fX) (lamE par (desugar arg))))]
-    #;[(divS) (appE (desugar (add1S))
-                  (appE (desugar (plusS))
-                        (lamE 'm
-                              (lamE 'n
-                                    (appE (idE 'n) (idE 'm))))))]
     [else (error 'desugar "not implemented")]))
+
+
+#;(expr->string (desugar (parse `{let {[div {lambda {m} {lambda {n}
+                                                          {letrec {[divinter {lambda {m} {lambda {n} {lambda {k}
+                                                                                        
+                                                                                                       {if {zero? k}
+                                                                                                           (+ 1 (divinter m n n))
+                                                                                                           {if {zero? m}
+                                                                                                               0
+                                                                                                               (divinter (- m 1) n (- k 1))}}}}}]}
+                                                            {divinter m n n}}}}]}
+
+                                                 
+                                   {div 4 2}})))
 
 #;(expr->string ( desugar ( parse `{ letrec {[fac { lambda {n}
                                                      { if { zero? n}
@@ -335,3 +344,15 @@
                                              {+ b { fac {- n 1} {+ b 1} } }} }}]}
              { fac 3 0} })
        4)
+(test (interp-number`{let {[div {lambda {m} {lambda {n}
+                                              {letrec {[divinter {lambda {m} {lambda {n} {lambda {k}
+                                                                                        
+                                                                                           {if {zero? k}
+                                                                                               (+ 1 (divinter m n n))
+                                                                                               {if {zero? m}
+                                                                                                   0
+                                                                                                   (divinter (- m 1) n (- k 1))}}}}}]}
+                                                {divinter m n n}}}}]}
+
+                                                 
+                       {div 4 4}}) 1)

@@ -195,7 +195,6 @@
      (if (empty? (store-pointers sto))
          (error 'interp "not an allocated pointer")
          (with [(ptr sto-b) (interp expr env sto)]
-                 
                (let [(pointer (find-p (numV-n ptr) (store-pointers sto-b)))]
                  (let [(storage (find-storage-by-pointer pointer (store-storages sto-b)))]
                    (v*s (numV 0) (free-aux (store-pointers sto-b)
@@ -424,3 +423,7 @@
                   (list
                    (pointer 5 4)
                    (pointer 1 3)))))
+(test/exn (interp-expr `{set-content! 0 2}) "segmentation fault")
+(test/exn (interp-expr `{content "a"}) "segmentation fault")
+
+
