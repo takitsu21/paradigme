@@ -194,7 +194,43 @@
     [(letrecS par arg body) (appE
                              (lamE par (desugar body))
                              (appE (fX) (lamE par (desugar arg))))]
-    [else (error 'desugar "not implemented")]))
+    [(divS) 
+     (desugar (letS
+               (list 'div 'm 'n)
+               (list
+                (lamS
+                 '(m)
+                 (lamS
+                  '(n)
+                  (letrecS
+                   'divinter
+                   (lamS
+                    '(m)
+                    (lamS
+                     '(n)
+                     (lamS
+                      '(k)
+                      (ifS
+                       (appS (zeroS) (list (idS 'k)))
+                       (appS
+                        (plusS)
+                        (list
+                         (numS 1)
+                         (appS (idS 'divinter) (list (idS 'm) (idS 'n) (idS 'n)))))
+                       (ifS
+                        (appS (zeroS) (list (idS 'm)))
+                        (numS 0)
+                        (appS
+                         (idS 'divinter)
+                         (list
+                          (appS (minusS) (list (idS 'm) (numS 1)))
+                          (idS 'n)
+                          (appS (minusS) (list (idS 'k) (numS 1))))))))))
+                   (appS (idS 'divinter) (list (idS 'm) (idS 'n) (idS 'n)))))))
+               (appS (idS 'div) (list (idS 'm) (idS 'n)))))]))
+
+
+
 
 
 #;(expr->string (desugar (parse `{let {[div {lambda {m} {lambda {n}
@@ -329,7 +365,7 @@
 ( test ( interp-number `{ sub1 2}) 1)
 ( test ( interp-number `{- 4 2}) 2)
 ( test ( interp-number `{- 1 2}) 0)
-( test ( interp-number `{/ 2 2}) 1)
+( test ( interp-number `{/ 4 4}) 1)
 ( test ( interp-number
          `{ letrec {[fac { lambda {n}
                             { if { zero? n}
@@ -356,3 +392,21 @@
 
                                                  
                        {div 4 4}}) 1)
+
+(display "/ 4 4\n")
+(expr->string (desugar (parse `{+ {/ 8 4} 5})))
+(display "\n\nletrec\n")
+(expr->string (desugar (parse `{let {[div {lambda {m} {lambda {n}
+                                                        {letrec {[divinter {lambda {m} {lambda {n} {lambda {k}
+                                                                                        
+                                                                                                     {if {zero? k}
+                                                                                                         (+ 1 (divinter m n n))
+                                                                                                         {if {zero? m}
+                                                                                                             0
+                                                                                                             (divinter (- m 1) n (- k 1))}}}}}]}
+                                                          {divinter m n n}}}}]}
+
+                                                 
+                                 {div 4 4}})))
+
+(interp-number `{* {- {/ 21 3} 5} {/ 20 5}})
