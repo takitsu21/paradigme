@@ -145,30 +145,23 @@
     [(appS fun args) (if (>= (length args) 1)
                          (app-aux (reverse args) (desugar fun))
                          (error 'desugar "not implemented"))]
-    [(letS pars args body) (if (>= (length args) 1)
+    [(letS pars args body) (if (and (>= (length pars) 1) (>= (length args) 1))
                                (app-aux (reverse args) (lam-aux pars body))
                                (error 'desugar "not implemented"))]
-    [(add1S) (lamE 'n
-                   (lamE 'f
-                         (lamE 'x (appE (idE 'f) (desugar (appS (appS (idS 'n) (list (idS 'f))) (list (idS 'x))))))))]
+    [(add1S) (desugar (lamS (list 'n 'f 'x)
+                            (appS (idS 'f) (list (appS (appS (idS 'n) (list (idS 'f))) (list (idS 'x)))))))]
     [(numS n) (num-aux n (idE 'x))]
-    [(plusS) (lamE 'n
-                   (lamE 'm
-                         (appE (appE (idE 'm) (desugar (add1S))) (idE 'n))))]
-    [(multS) (lamE 'n
-                   (lamE 'm
-                         (appE (appE (idE 'm) (desugar (appS (plusS) (list (idS 'n))))) (desugar (numS 0)))))]
-    [(ifS cnd l r) (appE
-                    (appE
-                     (appE (desugar cnd) (lamE '_ (desugar l)))
-                     (lamE '_ (desugar r)))
-                    (idE '_))]
-    [(trueS) (lamE 'x
-                   (lamE 'y
-                         (idE 'x)))]
-    [(falseS) (lamE 'x
-                    (lamE 'y
-                          (idE 'y)))]
+    [(plusS) (desugar (lamS (list 'n 'm)
+                            (appS (appS (idS 'm) (list (add1S))) (list (idS 'n)))))]
+    [(multS) (desugar (lamS (list 'n 'm)
+                            (appS (appS (idS 'm) (list (appS (plusS) (list (idS 'n))))) (list (numS 0)))))]
+    [(ifS cnd l r) (desugar (appS
+                             (appS
+                              (appS cnd (list (lamS '(_)  l)))
+                              (list (lamS '(_) r)))
+                             (list (idS '_))))]
+    [(trueS) (desugar (lamS (list 'x 'y) (idS 'x)))]
+    [(falseS) (desugar (lamS (list 'x 'y) (idS 'y)))]
     [(zeroS) (lamE 'n
                    (appE
                     (appE (idE 'n) (lamE 'x (desugar (falseS))))
@@ -188,13 +181,11 @@
                      (desugar
                       (appS
                        (appS (pairS) (list (numS 0))) (list (numS 0)))))))]
-    [(minusS) (lamE 'n
-                    (lamE 'm
-                          (appE (appE (idE 'm) (desugar (sub1S))) (idE 'n))))]
+    [(minusS) (desugar (lamS (list 'n 'm) (appS (appS (idS 'm) (list (sub1S))) (list (idS 'n)))))]
     [(letrecS par arg body) (appE
                              (lamE par (desugar body))
                              (appE (fX) (lamE par (desugar arg))))]
-    [(divS) 
+    [(divS)
      (desugar (letS
                (list 'div 'm 'n)
                (list
@@ -362,9 +353,9 @@
 ( test ( interp-boolean `{ zero? 1}) #f)
 ( test ( interp ( desugar ( parse `{ fst { pair a b} }))) (idE 'a))
 ( test ( interp ( desugar ( parse `{ snd { pair a b} }))) (idE 'b))
-( test ( interp-number `{ sub1 2}) 1)
+( test ( interp-number `{ sub1 10}) 9)
 ( test ( interp-number `{- 4 2}) 2)
-( test ( interp-number `{- 1 2}) 0)
+( test ( interp-number `{- 5 2}) 3)
 ( test ( interp-number `{/ 4 4}) 1)
 ( test ( interp-number
          `{ letrec {[fac { lambda {n}
@@ -394,7 +385,7 @@
                        {div 4 4}}) 1)
 
 (display "/ 4 4\n")
-(expr->string (desugar (parse `{+ {/ 8 4} 5})))
+(expr->string (desugar (parse `{/ 4 4})))
 (display "\n\nletrec\n")
 (expr->string (desugar (parse `{let {[div {lambda {m} {lambda {n}
                                                         {letrec {[divinter {lambda {m} {lambda {n} {lambda {k}
@@ -406,7 +397,7 @@
                                                                                                              (divinter (- m 1) n (- k 1))}}}}}]}
                                                           {divinter m n n}}}}]}
 
-                                                 
+                                 
                                  {div 4 4}})))
 
-(interp-number `{* {- {/ 21 3} 5} {/ 20 5}})
+(interp-number `{* {- {/ 30 3} 5} {/ 20 5}})
