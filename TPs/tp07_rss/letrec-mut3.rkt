@@ -68,14 +68,6 @@
      (let ([sl (s-exp->list s)])
        (let ([subst (s-exp->list (first (s-exp->list (second sl))))])
          (appE (lamE (s-exp->symbol (first subst)) (parse (third sl))) (parse (second subst)))))]
-;    [(s-exp-match? `{let {[SYMBOL ANY] [SYMBOL ANY] ...} ANY} s)
-;     (let ([sl (s-exp->list s)])
-;       (let ([substs (map s-exp->list (s-exp->list (second sl)))])
-;         (letS (map (compose s-exp->symbol first) substs)
-;               (map (compose parse second) substs)
-;               (parse (third sl)))))]
-
-    
     [(s-exp-match? `{letrec {[SYMBOL ANY] [SYMBOL ANY] ...} ANY} s)
      (let ([sl (s-exp->list s)])
        (let ([subst (map s-exp->list (s-exp->list (second sl)))])
@@ -107,14 +99,26 @@
 ; Interprétation ;
 ;;;;;;;;;;;;;;;;;;
 
-(define (letrec-aux s rhs body env)
+
+
+(define (find-box s env)
+  (cond
+    [(empty? env) (box (undef))]
+    [(equal? s (bind-name (first env))) (bind-val (first env))]
+    [else (find-box s(rest env))]))
+
+(define (bind-all s env)
   (if (empty? s)
+      env
+      (bind-all (rest s) (extend-env (bind (first s) (box (undef))) env))))
+
+(define (set-all-box s rhs body env)
+  (if (empty? rhs)
       (interp body env)
-      (let ([b (box (undef))])
-        (let ([new-env (extend-env (bind (first s) b) env)])
-          (begin
-            (set-box! b (delay (first rhs) new-env (box (some (interp (first rhs) new-env)))))
-            (letrec-aux (rest s) (rest rhs) body new-env))))))
+      (begin
+        (set-box! (find-box (first s) env) (delay (first rhs) env (box (some (interp (first rhs) env)))))
+        (set-all-box (rest s) (rest rhs) body env))))
+      
 
 ;(define (letrec-aux s rhs env)
 ;  (if (empty? s)
@@ -133,20 +137,7 @@
     [(idE s) (force (lookup s env))]
     [(plusE l r) (num+ (interp l env) (interp r env))]
     [(multE l r) (num* (interp l env) (interp r env))]
-    [(letrecE s rhs body) (letrec-aux s rhs body env)]
-;     (let [(b (box (undef)))]
-;     (letrec ([new-env (extend-env (bind (first s) b) env)]
-;                 [val (delay (first rhs) env (box (some (interp (first rhs) env))))])
-;          (interp body new-env)))]
-    ;     (let ([b (box (undef))])
-    ;       (let ([new-env (extend-env (bind s b) env)])
-    ;         (begin
-    ;           (set-box! b (delay rhs env (box (some (interp rhs new-env)))))
-    ;           (interp body new-env))))]
-
-;    (letrec ([new-env (extend-env (bind s (lambda () val)) env)]
-;              [val (interp rhs new-env)])
-;       (interp body new-env))
+    [(letrecE s rhs body) (set-all-box s rhs body (bind-all s env))]
     [(ifE cnd l r)
      (type-case Value (interp cnd env)
        [(numV n) (if (not (= n 0)) (interp l env) (interp r env))]
@@ -212,13 +203,39 @@
              { let {[ ints { numbers-from 0}]}
                 { fst { snd { snd { snd ints } } } } } })
        ( numV 3))
-( test ( interp-expr
-         `{ letrec {[even? { lambda {n} { if n
-                                               {odd? {- n 1} }
-                                               1} }]
-                    [odd? { lambda {n} { if n
-                                             { even? {- n 1} }
-                                             0} }]}
-             { even? 5} })
-       ( numV 0))
 
+
+( test ( interp-expr
+         `{ letrec {[even? {lambda {n} {if n
+                                           {odd? {- n 1} }
+                                           1}}]
+                    [odd? {lambda {n} {if n
+                                          {even? {- n 1} }
+                                          0} }]}
+             { even? 5} })
+       (numV 0))
+
+
+( test ( interp-expr
+         `{ letrec
+               {; curryfied map2 on infinite lists
+                [map2 { lambda {f}
+                         { lambda {l1}
+                            { lambda {l2}
+                               { pair { {f { fst l1} } { fst l2} }
+                                      { { { map2 f} { snd l1} } { snd l2} } } } } }]
+                ; curryfied list-ref
+                [list-ref { lambda {l}
+                             { lambda {n}
+                                { if n
+                                     { { list-ref { snd l} } {- n 1} }
+                                     { fst l} } } }]
+                ; curryfied addition function
+                [add { lambda {x} { lambda {y} {+ x y} } }]
+                ; infinite fibonacci sequence !!!
+                ; ( list 0 1 1 2 3 5 8 13 ... )
+                [ fibo { pair 0
+                              { pair 1
+                                     { { { map2 add } fibo } { snd fibo } } } }]}
+             { { list-ref fibo } 7} })
+       ( numV 13))

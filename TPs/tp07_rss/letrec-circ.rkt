@@ -120,3 +120,12 @@
 
 (define (interp-expr [e : S-Exp]) : Value
   (interp (parse e) mt-env))
+( test ( interp-expr
+         `{ letrec {[even? { lambda {n} {if n
+                                            {odd? {- n 1} }
+                                            1}}]
+                    [odd? { lambda {n} {if n
+                                           { even? {- n 1} }
+                                           0} }]}
+             { even? 5} })
+       ( numV 0))
