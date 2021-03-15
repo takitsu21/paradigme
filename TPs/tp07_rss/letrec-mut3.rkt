@@ -118,7 +118,7 @@
       (begin
         (set-box! (find-box (first s) env) (delay (first rhs) env (box (some (interp (first rhs) env)))))
         (set-all-box (rest s) (rest rhs) body env))))
-      
+
 
 ;(define (letrec-aux s rhs env)
 ;  (if (empty? s)
@@ -214,6 +214,16 @@
                                           0} }]}
              { even? 5} })
        (numV 0))
+
+( test ( interp-expr
+         `{ letrec {[even? {lambda {n} {if n
+                                           {odd? {- n 1} }
+                                           1}}]
+                    [odd? {lambda {n} {if n
+                                          {even? {- n 1} }
+                                          0} }]}
+             { odd? 15} })
+       (numV 1))
 
 
 ( test ( interp-expr
