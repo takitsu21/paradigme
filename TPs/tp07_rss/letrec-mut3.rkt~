@@ -105,7 +105,7 @@
   (cond
     [(empty? env) (box (undef))]
     [(equal? s (bind-name (first env))) (bind-val (first env))]
-    [else (find-box s (rest env))]))
+    [else (find-box s(rest env))]))
 
 (define (bind-all s env)
   (if (empty? s)
@@ -116,7 +116,7 @@
   (if (empty? rhs)
       (interp body env)
       (begin
-        (set-box! (box (lookup (first s) env)) (delay (first rhs) env (box (none))))
+        (set-box! (find-box (first s) env) (delay (first rhs) env (box (some (interp (first rhs) env)))))
         (set-all-box (rest s) (rest rhs) body env))))
 
 
@@ -129,7 +129,6 @@
 ;          
 ;          (begin
 ;            (letrec-aux (rest s) (rest rhs) new-env))))))
-
 
 ; Interpréteur
 (define (interp [e : Exp] [env : Env]) : Value
@@ -147,7 +146,7 @@
     [(appE f arg)
      (type-case Value (interp f env)
        [(closV par body c-env)
-        (interp body (extend-env (bind par (box (delay arg env (box (none))))) c-env))]
+        (interp body (extend-env (bind par (box (delay arg env (box (some (interp arg env)))))) c-env))]
        [else (error 'interp "not a function")])]
     [(pairE fst snd)
      (pairV (delay fst env (box (none))) (delay snd env (box (none))))]
@@ -176,7 +175,6 @@
     [(delay e env mem)
      (type-case (Optionof Value) (unbox mem)
        [(none) (let ([val (interp e env)])
-                 (if (undef
                  (begin
                    (set-box! mem (some val))
                    val))]
@@ -251,13 +249,3 @@
                                      { { { map2 add } fibo } { snd fibo } } } }]}
              { { list-ref fibo } 7} })
        ( numV 13))
-
-(test (interp-expr `{let {[x {1 2}]} 3}) (numV 3))
-(test (interp-expr `{letrec {[x {1 2}]} 3}) (numV 3))
-(test (interp-expr `{snd {pair {1 2} 3}}) (numV 3))
-(test (interp-expr `{letrec {[fac {lambda {n}
-                                    {if n
-                                        {* n {fac {- n 1}}}
-                                        1}}]}
-                      {fac 6}})
-      (numV 720))

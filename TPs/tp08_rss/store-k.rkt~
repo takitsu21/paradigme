@@ -43,7 +43,7 @@
   [appArgK (arg : Exp) (env : Env) (k : Cont)]
   [doAppK (val : Value) (k : Cont)]
   [setK (val : Value) (k : Cont)]
-  [beginK (r : Exp) (env : Env) (k : Cont)])
+  [beginK (val : Value) (r : Exp) (k : Cont)])
 
 ; Représentation des adresses mémoire
 (define-type-alias Location Number)
@@ -115,14 +115,10 @@
                (override-store (cell l (contV k)) sto)
                k))]
     [(beginE l r)
-           (interp l env sto (beginK r env k))]
+           (interp l env sto-l (beginK ))]
     [(setE par body)
      (let ([l (new-loc sto)])
-       (let ([new-env (extend-env (bind par l) env)])
-       (continue k (interp body new-env
-               (override-store (cell l (contV k)) sto)
-               k) sto)
-     )]))
+       (interp body (extend-env (bind par l)) (override-store (cell l (contV k)) sto) (contV k)))]))
 
 ; Appel des continuations
 (define (continue [k : Cont] [val : Value] [sto : Store]) : Value
@@ -143,8 +139,8 @@
                   next-k))]
        [(contV k-v) (continue k-v val sto)]
        [else (error 'interp "not a function")])]
-    [(setK v-f next-k) (continue next-k v-f sto)]
-    [(beginK r env next-k) (interp r env sto (doAppK val next-k))]))
+    [(setK v-f next-k) (doAppK v-f next-k)]
+    [(beginK v-f r next-k) (interp r env sto (doAppK v-f next-k))]))
 
 ; Fonctions utilitaires pour l'arithmétique
 (define (num-op [op : (Number Number -> Number)]
