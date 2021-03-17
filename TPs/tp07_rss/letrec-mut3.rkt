@@ -251,17 +251,4 @@
 (test/exn (interp-expr `{fst 0}) "not a pair")
 (test/exn (interp-expr `{snd {lambda {x} x}}) "not a pair")
 (test/exn (interp-expr `{1 2}) "not a function")
-
-(define (force [t : Thunk]) : Value
-  (type-case Thunk t
-    [(delay e env mem)
-     (type-case (Optionof Value) (unbox mem)
-       [(none) (let ([val (undefV)])
-                 (begin
-                   (set-box! mem (some val))
-                   (let ([val (interp e env)])
-                     (begin
-                       (set-box! mem (some val))
-                       val))))]
-       [(some val) val])])
-  [(undef) (undefV)])
+(test/exn (interp-expr `{letrec {[x y]} x}) "free identifier")
