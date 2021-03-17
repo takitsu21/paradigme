@@ -99,8 +99,6 @@
 ; Interprétation ;
 ;;;;;;;;;;;;;;;;;;
 
-
-
 (define (find-box s env)
   (cond
     [(empty? env) (box (undef))]
@@ -116,7 +114,7 @@
   (if (empty? rhs)
       (interp body env)
       (begin
-        (set-box! (find-box (first s) env) (delay (first rhs) env (box (some (interp (first rhs) env)))))
+        (set-box! (find-box (first s) env) (delay (first rhs) env (box (none))))
         (set-all-box (rest s) (rest rhs) body env))))
 
 ; Interpréteur
@@ -126,18 +124,16 @@
     [(idE s) (force (lookup s env))]
     [(plusE l r) (num+ (interp l env) (interp r env))]
     [(multE l r) (num* (interp l env) (interp r env))]
-    [(letrecE s rhs body) (set-all-box s rhs body (bind-all s env))]
-    ;[(letrecE s rhs body) (letrec-aux s rhs body env)]
     [(ifE cnd l r)
      (type-case Value (interp cnd env)
        [(numV n) (if (not (= n 0)) (interp l env) (interp r env))]
        [else (error 'interp "not a number")])]
     [(lamE par body) (closV par body env)]
+    [(letrecE s rhs body) (set-all-box s rhs body (bind-all s env))]
     [(appE f arg)
      (type-case Value (interp f env)
        [(closV par body c-env)
         (interp body (extend-env (bind par (box (delay arg env (box (none))))) c-env))]
-       [(numV n) (numV n)]
        [else (error 'interp "not a function")])]
     [(pairE fst snd)
      (pairV (delay fst env (box (none))) (delay snd env (box (none))))]
@@ -162,15 +158,17 @@
   (num-op * l r))
 
 (define (force [t : Thunk]) : Value
-    (type-case Thunk t
-      [(delay e env mem)
-       (type-case (Optionof Value) (unbox mem)
-         [(none) (let ([val (interp e env)])
-                   (begin
-                     (set-box! mem (some val))
-                     val))]
-         [(some val) val])]
-      [(undef) (undefV)]))
+  (type-case Thunk t
+    [(delay e env mem)
+     (type-case (Optionof Value) (unbox mem)
+       [(none) (begin
+                 (set-box! mem (some (undefV)))
+                 (let ([val (interp e env)])
+                     (begin
+                       (set-box! mem (some val))
+                       val)))]
+       [(some val) val])]
+    [(undef) (undefV)]))
 
 ; Recherche d'un identificateur dans l'environnement
 (define (lookup [n : Symbol] [env : Env]) : Thunk
@@ -196,7 +194,6 @@
                 { fst { snd { snd { snd ints } } } } } })
        ( numV 3))
 
-
 ( test ( interp-expr
          `{ letrec {[even? {lambda {n} {if n
                                            {odd? {- n 1} }
@@ -218,7 +215,7 @@
        (numV 1))
 
 
-( test ( interp-expr
+(test (interp-expr
          `{ letrec
                {; curryfied map2 on infinite lists
                 [map2 { lambda {f}
@@ -251,3 +248,20 @@
                                         1}}]}
                       {fac 6}})
       (numV 720))
+(test/exn (interp-expr `{fst 0}) "not a pair")
+(test/exn (interp-expr `{snd {lambda {x} x}}) "not a pair")
+(test/exn (interp-expr `{1 2}) "not a function")
+
+(define (force [t : Thunk]) : Value
+  (type-case Thunk t
+    [(delay e env mem)
+     (type-case (Optionof Value) (unbox mem)
+       [(none) (let ([val (undefV)])
+                 (begin
+                   (set-box! mem (some val))
+                   (let ([val (interp e env)])
+                     (begin
+                       (set-box! mem (some val))
+                       val))))]
+       [(some val) val])])
+  [(undef) (undefV)])
