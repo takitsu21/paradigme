@@ -16,7 +16,9 @@
   [lamE (par : Symbol) (body : Exp)]
   [let/ccE (s : Symbol) (body : Exp)]
   [setE (par : Symbol) (body : Exp)]
-  [beginE (l : Exp) (r : Exp)])
+  [beginE (l : Exp) (r : Exp)]
+  [ifE (cnd : Exp) (l : Exp) (r : Exp)]
+  [whileE (cnd : Exp) (body : Exp)])
 
 ; Représentation des valeurs
 (define-type Value
@@ -42,8 +44,11 @@
   [doMultK (val : Value) (k : Cont)]
   [appArgK (arg : Exp) (env : Env) (k : Cont)]
   [doAppK (val : Value) (k : Cont)]
-  [setK (val : Value) (k : Cont)]
-  [beginK (r : Exp) (env : Env) (k : Cont)])
+  [setK (par : Location) (env : Env) (k : Cont)]
+  [beginK (r : Exp) (env : Env) (k : Cont)]
+  [ifK (l : Exp) (r : Exp) (env : Env) (k : Cont)]
+  [doWhileK (val : Value) (cnd : Exp) (body : Exp) (env : Env) (k : Cont)]
+  [whileFirstK (cnd : Exp) (body : Exp) (env : Env) (k : Cont)])
 
 ; Représentation des adresses mémoire
 (define-type-alias Location Number)
@@ -84,6 +89,12 @@
     [(s-exp-match? `{let/cc SYMBOL ANY} s)
      (let ([sl (s-exp->list s)])
        (let/ccE (s-exp->symbol (second sl)) (parse (third sl))))]
+    [(s-exp-match? `{while ANY ANY} s)
+     (let ([sl (s-exp->list s)])
+       (whileE (parse (second sl)) (parse (third sl))))]
+    [(s-exp-match? `{if ANY ANY ANY} s)
+     (let ([sl (s-exp->list s)])
+       (ifE (parse (second sl)) (parse (third sl)) (parse (fourth sl))))]
     [(s-exp-match? `{set! SYMBOL ANY} s)
      (let ([sl (s-exp->list s)])
        (setE (s-exp->symbol (second sl)) (parse (third sl))))]
@@ -115,20 +126,19 @@
                (override-store (cell l (contV k)) sto)
                k))]
     [(beginE l r)
-           (interp l env sto (beginK r env k))]
+     (interp r env sto (beginK l env k))]
     [(setE par body)
-     (let ([l (new-loc sto)])
-       (let ([new-env (extend-env (bind par l) env)])
-       (continue k (interp body new-env
-               (override-store (cell l (contV k)) sto)
-               k) sto)
-     )]))
+     (let ([l (lookup par env)])
+       (interp body env sto (setK l env k)))]
+    [(ifE cnd l r)
+     (interp cnd env sto (ifK l r env k))]
+    [(whileE cnd body) (continue (whileFirstK cnd body env k) (interp cnd env sto k) sto)]))
 
 ; Appel des continuations
 (define (continue [k : Cont] [val : Value] [sto : Store]) : Value
   (type-case Cont k
     [(doneK) val]
-    [(addSecondK r env next-k) (interp r env sto(doAddK val next-k))]
+    [(addSecondK r env next-k) (interp r env sto (doAddK val next-k))]
     [(doAddK v-l next-k) (continue next-k (num+ v-l val) sto)]
     [(multSecondK r env next-k) (interp r env sto (doMultK val next-k))]
     [(doMultK v-l next-k) (continue next-k (num* v-l val) sto)]
@@ -143,8 +153,40 @@
                   next-k))]
        [(contV k-v) (continue k-v val sto)]
        [else (error 'interp "not a function")])]
-    [(setK v-f next-k) (continue next-k v-f sto)]
-    [(beginK r env next-k) (interp r env sto (doAppK val next-k))]))
+    [(setK l env next-k)
+     (continue next-k val (override-store (cell l val) sto))]
+    [(beginK r env next-k) (interp r env sto next-k)]
+    [(ifK l r env next-k) (type-case Value val
+                            [(numV n) (if (= 0 n)
+                                          (interp r env sto next-k)
+                                          (interp l env sto next-k))]
+                            [else (error 'continue "not a number")])]
+    [(whileFirstK cnd body env next-k) (interp cnd env sto (doWhileK val cnd body env next-k))]
+    [(doWhileK v-f cnd body env next-k) (begin
+                                          (display "v-f : ")
+                                          (display v-f)
+                                          (display "\nval : ")
+                                          (display val)
+                                          (display "\n")
+                                          (type-case Value val
+                                          [(contV k-v) (continue k-v val sto)]
+                                          [(numV n) (if (= n 0)
+                                                        v-f
+                                                        (interp body env sto (whileFirstK cnd body env next-k)))]
+                                          [else (error 'eza "eerror")]))]))
+;    [(whileFirstK cnd body env next-k) (type-case Value val
+;                                         [(numV n) (begin
+;                                                     (display n)
+;                                                     (if (= n 0)
+;                                                         val
+;                                                         (continue (doWhileK cnd body env next-k) (contV k) sto)))]
+;                                         [(contV k-v) (continue k-v (contV next-k) sto)]
+;                                         [else (error 'za "error")])]
+;    [(doWhileK cnd body env next-k) (type-case Value val
+;                                      [(contV k-v) (continue k-v (interp body env sto k-v) sto)]
+;                                      [(numV n) (continue next-k val sto)]
+;                                      [else (error 'eza "eerror")])]))
+;(continue (whileFirstK cnd body env next-k) (contV next-k)  sto)]))
 
 ; Fonctions utilitaires pour l'arithmétique
 (define (num-op [op : (Number Number -> Number)]
@@ -194,3 +236,18 @@
                          { begin { set! x 1}
                                  x} })
        ( numV 1))
+( test ( interp-expr `{ if 1 2 3}) ( numV 2))
+( test ( interp-expr `{ if 0 2 3}) ( numV 3))
+( test ( interp-expr `{ while 0 x}) ( numV 0))
+( test ( interp-expr `{ let {[fac
+                              { lambda {n}
+                                 { let {[res 1]}
+                                    { begin
+                                       { while n ; tant que n est non nul
+                                               { begin
+                                                  { set! res {* n res } }
+                                                  { set! n {+ n -1} } } }
+                                       res } } }]}
+                         { fac 6} })
+       ( numV 720))
+

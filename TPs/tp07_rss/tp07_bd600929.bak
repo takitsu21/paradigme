@@ -101,7 +101,7 @@
 
 (define (find-box s env)
   (cond
-    [(empty? env) (box (undef))]
+    [(empty? env) (error 'find-box "free identifier")]
     [(equal? s (bind-name (first env))) (bind-val (first env))]
     [else (find-box s (rest env))]))
 
@@ -252,3 +252,4 @@
 (test/exn (interp-expr `{snd {lambda {x} x}}) "not a pair")
 (test/exn (interp-expr `{1 2}) "not a function")
 (test/exn (interp-expr `{letrec {[x y]} x}) "free identifier")
+(test (interp-expr `(letrec ((x x)) (letrec ((a b)) x))) (undefV))

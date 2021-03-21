@@ -155,7 +155,8 @@
     [(beginE l r)
      (with [(v-l sto-l) (interp l env sto)]
            (interp r env sto-l))]
-    [(addressE var) (v*s (numV (lookup var env)) sto)]
+    [(addressE var)
+     (v*s (numV (lookup var env)) sto)]
     [(contentE loc)
      (with [(v-b sto-b) (interp loc env sto)]
            (if (integer? (numV-n v-b))
