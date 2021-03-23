@@ -138,7 +138,12 @@
     [(ifE cnd l r)
      (interp cnd env sto (ifK l r env k))]
     [(whileE cnd body) (interp cnd env sto (whileFirstK (numV 0) cnd body env k))]
-    [(breakE) (numV 0)]))
+    [(breakE) (type-case Cont k
+                [(whileFirstK v cnd body env next-k) (if (breakE? cnd)
+                                                         (error 'interp "break outside while")
+                                                         (continue next-k (numV 0) sto))]
+                [(doWhileK cnd body env next-k) (continue next-k (numV 0) sto)]
+                [else (error 'interp "break outside while")])]))
 
 ; Appel des continuations
 (define (continue [k : Cont] [val : Value] [sto : Store]) : Value
@@ -168,12 +173,12 @@
                                           (interp l env sto next-k))]
                             [else (error 'continue "not a number")])]
     
-    [(whileFirstK v-f cnd body env next-k) (if (equal? val (numV 0))
-                                               (continue next-k v-f sto)
-                                               (interp body env sto (doWhileK cnd body env next-k)))]
-    [(doWhileK cnd body env next-k) (if (breakE? body)
-                                        (continue next-k val sto)
-                                        (interp cnd env sto (whileFirstK val cnd body env next-k)))]))
+    [(whileFirstK v-f cnd body env next-k)
+     (if (equal? val (numV 0))
+         (continue next-k v-f sto)
+         (interp body env sto (doWhileK cnd body env next-k)))]
+    [(doWhileK cnd body env next-k) 
+     (interp cnd env sto (whileFirstK val cnd body env next-k))]))
 
 
 ; Fonctions utilitaires pour l'arithmétique
@@ -235,6 +240,7 @@
                                                { begin
                                                   { set! res {* n res } }
                                                   { set! n {+ n -1} } } }
+                                       
                                        res } } }]}
                          { fac 6} })
        ( numV 720))
@@ -251,8 +257,8 @@
       (numV 1))
 
 ( test ( interp-expr `{ while 1 break }) ( numV 0))
-( test/exn ( interp-expr ` break ) " break outside while ")
-( test/exn ( interp-expr `{ while break 1}) " break outside while ")
+( test/exn ( interp-expr ` break ) "break outside while")
+( test/exn ( interp-expr `{ while break 1}) "break outside while")
 ( test ( interp-expr `{ let {[n 10]}
                          { begin
                             { while n ; tant que n est non nul
