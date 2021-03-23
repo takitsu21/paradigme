@@ -18,7 +18,8 @@
   [setE (par : Symbol) (body : Exp)]
   [beginE (l : Exp) (r : Exp)]
   [ifE (cnd : Exp) (l : Exp) (r : Exp)]
-  [whileE (cnd : Exp) (body : Exp)])
+  [whileE (cnd : Exp) (body : Exp)]
+  [breakE])
 
 ; Représentation des valeurs
 (define-type Value
@@ -47,8 +48,8 @@
   [setK (par : Location) (env : Env) (k : Cont)]
   [beginK (r : Exp) (env : Env) (k : Cont)]
   [ifK (l : Exp) (r : Exp) (env : Env) (k : Cont)]
-  [doWhileK (val : Value) (cnd : Exp) (body : Exp) (env : Env) (k : Cont)]
-  [whileFirstK (cnd : Exp) (body : Exp) (env : Env) (k : Cont)])
+  [doWhileK (cnd : Exp) (body : Exp) (env : Env) (k : Cont)]
+  [whileFirstK (val : Value) (cnd : Exp) (body : Exp) (env : Env) (k : Cont)])
 
 ; Représentation des adresses mémoire
 (define-type-alias Location Number)
@@ -69,7 +70,10 @@
 (define (parse [s : S-Exp]) : Exp
   (cond
     [(s-exp-match? `NUMBER s) (numE (s-exp->number s))]
+    [(s-exp-match? `break s) (breakE)]
     [(s-exp-match? `SYMBOL s) (idE (s-exp->symbol s))]
+    
+    
     [(s-exp-match? `{+ ANY ANY} s)
      (let ([sl (s-exp->list s)])
        (plusE (parse (second sl)) (parse (third sl))))]
@@ -101,6 +105,7 @@
     [(s-exp-match? `{begin ANY ANY} s)
      (let ([sl (s-exp->list s)])
        (beginE (parse (second sl)) (parse (third sl))))]
+    
     [(s-exp-match? `{ANY ANY} s)
      (let ([sl (s-exp->list s)])
        (appE (parse (first sl)) (parse (second sl))))]
@@ -126,13 +131,14 @@
                (override-store (cell l (contV k)) sto)
                k))]
     [(beginE l r)
-     (interp r env sto (beginK l env k))]
+     (interp l env sto (beginK r env k))]
     [(setE par body)
      (let ([l (lookup par env)])
        (interp body env sto (setK l env k)))]
     [(ifE cnd l r)
      (interp cnd env sto (ifK l r env k))]
-    [(whileE cnd body) (continue (whileFirstK cnd body env k) (interp cnd env sto k) sto)]))
+    [(whileE cnd body) (interp cnd env sto (whileFirstK (numV 0) cnd body env k))]
+    [(breakE) (numV 0)]))
 
 ; Appel des continuations
 (define (continue [k : Cont] [val : Value] [sto : Store]) : Value
@@ -161,32 +167,14 @@
                                           (interp r env sto next-k)
                                           (interp l env sto next-k))]
                             [else (error 'continue "not a number")])]
-    [(whileFirstK cnd body env next-k) (interp cnd env sto (doWhileK val cnd body env next-k))]
-    [(doWhileK v-f cnd body env next-k) (begin
-                                          (display "v-f : ")
-                                          (display v-f)
-                                          (display "\nval : ")
-                                          (display val)
-                                          (display "\n")
-                                          (type-case Value val
-                                          [(contV k-v) (continue k-v val sto)]
-                                          [(numV n) (if (= n 0)
-                                                        v-f
-                                                        (interp body env sto (whileFirstK cnd body env next-k)))]
-                                          [else (error 'eza "eerror")]))]))
-;    [(whileFirstK cnd body env next-k) (type-case Value val
-;                                         [(numV n) (begin
-;                                                     (display n)
-;                                                     (if (= n 0)
-;                                                         val
-;                                                         (continue (doWhileK cnd body env next-k) (contV k) sto)))]
-;                                         [(contV k-v) (continue k-v (contV next-k) sto)]
-;                                         [else (error 'za "error")])]
-;    [(doWhileK cnd body env next-k) (type-case Value val
-;                                      [(contV k-v) (continue k-v (interp body env sto k-v) sto)]
-;                                      [(numV n) (continue next-k val sto)]
-;                                      [else (error 'eza "eerror")])]))
-;(continue (whileFirstK cnd body env next-k) (contV next-k)  sto)]))
+    
+    [(whileFirstK v-f cnd body env next-k) (if (equal? val (numV 0))
+                                               (continue next-k v-f sto)
+                                               (interp body env sto (doWhileK cnd body env next-k)))]
+    [(doWhileK cnd body env next-k) (if (breakE? body)
+                                        (continue next-k val sto)
+                                        (interp cnd env sto (whileFirstK val cnd body env next-k)))]))
+
 
 ; Fonctions utilitaires pour l'arithmétique
 (define (num-op [op : (Number Number -> Number)]
@@ -250,4 +238,26 @@
                                        res } } }]}
                          { fac 6} })
        ( numV 720))
+(test (interp-expr `{let {[x 1]}
+                      {begin
+                        {while 0 {set! x 2}}
+                        x}})
+      (numV 1))
 
+(test (interp-expr `{let {[x 1]}
+                      {begin
+                        {while 0 0}
+                        x}})
+      (numV 1))
+
+( test ( interp-expr `{ while 1 break }) ( numV 0))
+( test/exn ( interp-expr ` break ) " break outside while ")
+( test/exn ( interp-expr `{ while break 1}) " break outside while ")
+( test ( interp-expr `{ let {[n 10]}
+                         { begin
+                            { while n ; tant que n est non nul
+                                    { if {- n 5}
+                                         { set! n {- n 1} } ; si n n' egale pas 5
+                                         break } } ; si n egale 5
+                            n} })
+       ( numV 5))
