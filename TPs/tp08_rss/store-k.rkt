@@ -167,15 +167,12 @@
     [(setK l env next-k)
      (continue next-k val (override-store (cell l val) sto))]
     [(beginK r env next-k) (interp r env sto next-k)]
-    [(ifK l r env next-k) (type-case Value val
-                            [(numV n) (if (= 0 n)
-                                          (interp r env sto next-k)
-                                          (interp l env sto next-k))]
-                            [else (error 'continue "not a number")])]
-    
+    [(ifK l r env next-k) (if (equal? val (numV 0))
+                              (interp r env sto next-k)
+                              (interp l env sto next-k))]
     [(whileFirstK v-f cnd body env next-k)
      (if (equal? val (numV 0))
-         (continue next-k v-f sto)
+         (continue next-k (numV 0) sto)
          (interp body env sto (doWhileK cnd body env next-k)))]
     [(doWhileK cnd body env next-k) 
      (interp cnd env sto (whileFirstK val cnd body env next-k))]))
@@ -267,3 +264,4 @@
                                          break } } ; si n egale 5
                             n} })
        ( numV 5))
+( test/exn ( interp-expr `{let {[n break]} n}) "break outside while")
