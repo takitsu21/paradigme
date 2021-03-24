@@ -25,8 +25,7 @@
 (define-type Value
   [numV (n : Number)]
   [closV (par : Symbol) (body : Exp) (env : Env)]
-  [contV (k : Cont)]
-  [errorV (msg : String)])
+  [contV (k : Cont)])
 
 ; Représentation des liaisons
 (define-type Binding
@@ -139,12 +138,7 @@
     [(ifE cnd l r)
      (interp cnd env sto (ifK l r env k))]
     [(whileE cnd body) (interp cnd env sto (whileFirstK (numV 0) cnd body env k))]
-    [(breakE) (type-case Cont k
-                [(whileFirstK v cnd body env next-k) (if (breakE? cnd)
-                                                         (error 'interpBreakE "break outside while")
-                                                         (continue next-k (numV 0) sto))]
-                [(doWhileK cnd body env next-k) (continue next-k (numV 0) sto)]
-                [else (escape k (numV 0) sto)])]))
+    [(breakE) (escape k (numV 0) sto)]))
 
 (define (escape [k : Cont] [val : Value] sto) : Value
   (type-case Cont k
@@ -157,7 +151,9 @@
     [(doAppK v-f next-k) (escape next-k val sto)]
     [(ifK l r env next-k) (escape next-k val sto)]
     [(beginK r env next-k) (escape next-k val sto)]
-    [(whileFirstK v-f cnd body env next-k) (continue next-k val sto)]
+    [(whileFirstK v-f cnd body env next-k) (if (breakE? cnd)
+                                               (error 'escape "break outside while")
+                                               (continue next-k val sto))]
     [(doWhileK cnd body env next-k) (continue next-k val sto)]
     [(setK l env next-k) (escape next-k val sto)]))
 
