@@ -25,7 +25,8 @@
 (define-type Value
   [numV (n : Number)]
   [closV (par : Symbol) (body : Exp) (env : Env)]
-  [contV (k : Cont)])
+  [contV (k : Cont)]
+  [errorV (msg : String)])
 
 ; Représentation des liaisons
 (define-type Binding
@@ -140,10 +141,26 @@
     [(whileE cnd body) (interp cnd env sto (whileFirstK (numV 0) cnd body env k))]
     [(breakE) (type-case Cont k
                 [(whileFirstK v cnd body env next-k) (if (breakE? cnd)
-                                                         (error 'interp "break outside while")
+                                                         (error 'interpBreakE "break outside while")
                                                          (continue next-k (numV 0) sto))]
                 [(doWhileK cnd body env next-k) (continue next-k (numV 0) sto)]
-                [else (error 'interp "break outside while")])]))
+                [else (escape k (numV 0) sto)])]))
+
+(define (escape [k : Cont] [val : Value] sto) : Value
+  (type-case Cont k
+    [(doneK) (error 'escape "break outside while")]
+    [(addSecondK r env next-k) (escape next-k val sto)]
+    [(doAddK v-l next-k) (escape next-k val sto)]
+    [(multSecondK r env next-k) (escape next-k val sto)]
+    [(doMultK v-l next-k) (escape next-k val sto)]
+    [(appArgK arg env next-k) (escape next-k val sto)]
+    [(doAppK v-f next-k) (escape next-k val sto)]
+    [(ifK l r env next-k) (escape next-k val sto)]
+    [(beginK r env next-k) (escape next-k val sto)]
+    [(whileFirstK v-f cnd body env next-k) (continue next-k val sto)]
+    [(doWhileK cnd body env next-k) (continue next-k val sto)]
+    [(setK l env next-k) (escape next-k val sto)]))
+
 
 ; Appel des continuations
 (define (continue [k : Cont] [val : Value] [sto : Store]) : Value
@@ -265,3 +282,54 @@
                             n} })
        ( numV 5))
 ( test/exn ( interp-expr `{let {[n break]} n}) "break outside while")
+( test/exn ( interp-expr `{if break 0 1 }) "break outside while")
+(test (interp-expr `{let {[n 10]}
+                      {let {[x 50]}
+                        {begin
+                          {while n ; tant que n est non nul
+                                 (if (- n 1)
+                                     {while {- n 1}
+                                            {begin
+                                              {set! n {- n 1}}
+                                              {set! x {- x 1}}}}
+                                     break)}
+                          x}}})
+      (numV 41))
+(test (interp-expr `{while 1 {begin break 1}})
+      (numV 0))
+(test (interp-expr `{let {[is-pos {lambda {n} ; n entier, renvoie n > 0
+                                    {let {[res 0]}
+                                      {begin
+                                        {let {[try-pos n]}
+                                          {let {[try-neg n]}
+                                            {while 1
+                                                   {begin
+                                                     {if try-neg
+                                                         {set! try-neg {+ try-neg 1}}
+                                                         break}
+                                                     {if try-pos
+                                                         {set! try-pos {- try-pos 1}}
+                                                         {begin
+                                                           {set! res 1}
+                                                           break}}}}}}
+                                        res}}}]}
+                      {is-pos 42}})
+      (numV 1))
+(test (interp-expr `{let {[is-pos {lambda {n} ; n entier, renvoie n > 0
+                                    {let {[res 0]}
+                                      {begin
+                                        {let {[try-pos n]}
+                                          {let {[try-neg n]}
+                                            {while 1
+                                                   {begin
+                                                     {if try-neg
+                                                         {set! try-neg {+ try-neg 1}}
+                                                         break}
+                                                     {if try-pos
+                                                         {set! try-pos {- try-pos 1}}
+                                                         {begin
+                                                           {set! res 1}
+                                                           break}}}}}}
+                                        res}}}]}
+                      {is-pos -10}})
+      (numV 0))
