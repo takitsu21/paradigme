@@ -45,7 +45,7 @@
   [doMultK (val : Value) (k : Cont)]
   [appArgK (arg : Exp) (env : Env) (k : Cont)]
   [doAppK (val : Value) (k : Cont)]
-  [setK (par : Location) (env : Env) (k : Cont)]
+  [setK (par : Symbol) (env : Env) (k : Cont)]
   [beginK (r : Exp) (env : Env) (k : Cont)]
   [ifK (l : Exp) (r : Exp) (env : Env) (k : Cont)]
   [doWhileK (cnd : Exp) (body : Exp) (env : Env) (k : Cont)]
@@ -133,14 +133,13 @@
     [(beginE l r)
      (interp l env sto (beginK r env k))]
     [(setE par body)
-     (let ([l (lookup par env)])
-       (interp body env sto (setK l env k)))]
+     (interp body env sto (setK par env k))]
     [(ifE cnd l r)
      (interp cnd env sto (ifK l r env k))]
     [(whileE cnd body) (interp cnd env sto (whileFirstK (numV 0) cnd body env k))]
     [(breakE) (escape k (numV 0) sto)]))
 
-(define (escape [k : Cont] [val : Value] sto) : Value
+(define (escape [k : Cont] [val : Value] [sto : Store]) : Value
   (type-case Cont k
     [(doneK) (error 'escape "break outside while")]
     [(addSecondK r env next-k) (escape next-k val sto)]
@@ -155,8 +154,7 @@
                                                (error 'escape "break outside while")
                                                (continue next-k val sto))]
     [(doWhileK cnd body env next-k) (continue next-k val sto)]
-    [(setK l env next-k) (escape next-k val sto)]))
-
+    [(setK par env next-k) (escape next-k val sto)]))
 
 ; Appel des continuations
 (define (continue [k : Cont] [val : Value] [sto : Store]) : Value
@@ -177,8 +175,8 @@
                   next-k))]
        [(contV k-v) (continue k-v val sto)]
        [else (error 'interp "not a function")])]
-    [(setK l env next-k)
-     (continue next-k val (override-store (cell l val) sto))]
+    [(setK par env next-k)
+     (continue next-k val (override-store (cell (lookup par env) val) sto))]
     [(beginK r env next-k) (interp r env sto next-k)]
     [(ifK l r env next-k) (if (equal? val (numV 0))
                               (interp r env sto next-k)
@@ -328,4 +326,23 @@
                                                            break}}}}}}
                                         res}}}]}
                       {is-pos -10}})
+      (numV 0))
+(test (interp-expr `{let {[n 1]}
+                      {while n {begin {set! n 0} 1}}})
+      (numV 0))
+(test/exn (interp-expr `{let {[is-pos {lambda {n} ; n entier, renvoie n > 0
+                                    {let {[res 0]}
+                                      {begin
+                                        {let {[try-pos n]}
+                                          {let {[try-neg n]}
+                                            {while 1
+                                                      {while break 0}}}}
+                                        res}}}]}
+                      {is-pos -10}})
+      "break outside while")
+(test (interp-expr `{let {[n 1]}
+                      {while n
+                             {begin
+                               {set! n 0}
+                               2}}})
       (numV 0))
