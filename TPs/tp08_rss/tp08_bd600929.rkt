@@ -150,9 +150,7 @@
     [(doAppK v-f next-k) (escape next-k val sto)]
     [(ifK l r env next-k) (escape next-k val sto)]
     [(beginK r env next-k) (escape next-k val sto)]
-    [(whileFirstK v-f cnd body env next-k) (if (breakE? cnd)
-                                               (error 'escape "break outside while")
-                                               (continue next-k val sto))]
+    [(whileFirstK v-f cnd body env next-k) (escape next-k val sto)]
     [(doWhileK cnd body env next-k) (continue next-k val sto)]
     [(setK par env next-k) (escape next-k val sto)]))
 
@@ -346,3 +344,13 @@
                                {set! n 0}
                                2}}})
       (numV 0))
+(test/exn (interp-expr `{let {[is-pos {lambda {n} ; n entier, renvoie n > 0
+                                    {let {[res 0]}
+                                      {begin
+                                        {let {[try-pos n]}
+                                          {let {[try-neg n]}
+                                            {while 1
+                                                      {while break 0}}}}
+                                        res}}}]}
+                      {is-pos -10}})
+      "break outside while")
