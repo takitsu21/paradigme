@@ -37,6 +37,8 @@
   [thisE]
   [argE]
   [numE (n : Number)]
+  [plusE (l : Exp) (r : Exp)]
+  [multE (l : Exp) (r : Exp)]
   [newE (class : Symbol) (field-values : (Listof Exp))]
   [getE (object : Exp) (field : Symbol)]
   [sendE (object : Exp) (method : Symbol) (arg : Exp)]
@@ -74,48 +76,25 @@
                 mtds)))))]
     [else (error 'parse-class "invalid input")]))
 
-
-(define-syntax-rule (get obj-expr field-id)
-  (find (fst obj-expr) 'field-id))
-
-(define-syntax-rule (multC l-ini r-ini)
-  (pair (list (pair 'l l-ini)
-              (pair 'r r-ini))
-        (list (pair 'interp (lambda (this env)
-                              (num* (send (get this l) interp env)
-                                    (send (get this r) interp env)))))))
-
-(define-syntax-rule (plusC l-ini r-ini)
-  (pair (list (pair 'l l-ini)
-              (pair 'r r-ini))
-        (list (pair 'interp (lambda (this env)
-                              (num+ (send (get this l) interp env)
-                                    (send (get this r) interp env)))))))
-
-(define-syntax-rule (send obj-expr method-id arg ...)
-  (let ([obj obj-expr])
-    ((find (snd obj) 'method-id) obj arg ...)))
-
 ; Analyse des expressions
 (define (parse [s : S-Exp] [in-method : Boolean]) : ExpS
   (local [(define (parse-r s) (parse s in-method))]
     (cond
       [(s-exp-match? `arg s) (if in-method (argS) (error 'parse "invalid input"))]
       [(s-exp-match? `this s) (if in-method (thisS) (error 'parse "invalid input"))]
-      [(s-exp-match? `{+ ANY ANY} s)
-       (let ([sl (s-exp->list s)])
-         (sendS (parse-r (second sl)) 'plus (parse-r (third sl))))]
-      [(s-exp-match? `{* ANY ANY} s)
-       (let ([sl (s-exp->list s)])
-         (sendS (parse-r (second sl)) 'mult (parse-r (third sl))))]
       [(s-exp-match? `NUMBER s) (numS (s-exp->number s))]
-      
       [(s-exp-match? `{select ANY ANY ANY} s)
        (let ([sl (s-exp->list s)])
          (selectS (parse-r (second sl)) (parse-r (third sl)) (parse-r (fourth sl))))]
       [(s-exp-match? `{instanceof ANY SYMBOL} s)
        (let ([sl (s-exp->list s)])
          (instanceofS (parse-r (second sl)) (s-exp->symbol (third sl))))]
+      [(s-exp-match? `{+ ANY ANY} s)
+       (let ([sl (s-exp->list s)])
+         (plusS (parse-r (second sl)) (parse-r (third sl))))]
+      [(s-exp-match? `{* ANY ANY} s)
+       (let ([sl (s-exp->list s)])
+         (multS (parse-r (second sl)) (parse-r (third sl))))]
       [(s-exp-match? `{new SYMBOL ANY ...} s)
        (let ([sl (s-exp->list s)])
          (newS (s-exp->symbol (second sl)) (map parse-r (rest (rest sl)))))]
@@ -141,12 +120,8 @@
       [(thisS) (thisE)]
       [(argS) (argE)]
       [(numS n) (numE n)]
-      [(plusS l r) (sendE (aux l)
-                          'plus
-                          (aux r))]
-      [(multS l r) (sendE (aux l)
-                          'mult
-                          (aux r))]
+      [(plusS l r) (plusE (aux l) (aux r))]
+      [(multS l r) (multE (aux l) (aux r))]
       [(newS c fd-vals) (newE c (map aux fd-vals))]
       [(getS o fd) (getE (aux o) fd)]
       [(sendS o mtd arg) (sendE (aux o) mtd (aux arg))]
@@ -237,7 +212,9 @@
     (type-case Exp e
       [(thisE) this-v]
       [(argE) arg-v]
-      [(numE n) (objV 'Number (list (numV n)))]
+      [(numE n) (numV n)]
+      [(plusE l r) (num+ (interp-r l) (interp-r r))]
+      [(multE l r) (num* (interp-r l) (interp-r r))]
       [(newE class-name fd-exprs)
        (let ([c (find class-name classes)])
          (if (= (length fd-exprs) (length (classE-field-names c)))
@@ -250,24 +227,13 @@
             (find fd (map2 pair
                            (classE-field-names c)
                            fd-vals)))]
-         [else (error 'interpz "not an object")])]
+         [else (error 'interp "not an object")])]
       [(sendE obj mtd arg)
-       (begin
-         (display mtd)
        (let ([obj-v (interp-r obj)])
-         (begin
-           (display obj-v)
-           (display (interp-r arg))
-           (display this-v)
-           (display arg-v)
-           
-                
          (type-case Value obj-v
            [(objV class-name fd-vals)
-            (if (equal? class-name 'Number)
-                (call-method class-name mtd classes obj-v (interp-r arg))
-            (call-method class-name mtd classes obj-v (interp-r arg)))]
-           [else (error 'interp "not an object")]))))]
+            (call-method class-name mtd classes obj-v (interp-r arg))]
+           [else (error 'interp "not an object")]))]
       [(ssendE obj class-name mtd arg)
        (call-method class-name mtd classes (interp-r obj) (interp-r arg))]
       [(selectE cnd obj arg) (let [(obj-v (interp-r obj))]
@@ -275,22 +241,35 @@
                                  [(objV class-name fd-vals) (if (equal? (interp-r cnd)  (numV 0))
                                                                 (call-method class-name 'select-false classes obj-v (interp-r arg))
                                                                 (call-method class-name 'select-true classes obj-v (interp-r arg)))]
-                                 [else (error 'interpSelectE "not an object")]))]
-      [(instanceofE expr class-name) (instance-aux (interp-r expr)
-                                                   (classE-super-name (find class-name classes))
-                                                   class-name
-                                                   classes)])))
+                                 [else (error 'interp "not an object")]))]
+      [(instanceofE expr cn) (let [(obj-v (interp-r expr))]
+                                       (type-case Value obj-v
+                                         [(objV class-name fd-vals) (depile
+                                                                     classes
+                                                                     class-name
+                                                                     (classE-super-name (find (objV-class-name obj-v) classes))
+                                                                     cn)]
+                                         [else (numV 0)]))])))
 
-(define (instance-aux expr-v super-name cn classes)
-  (if (equal? super-name 'Object)
-      (numV 1)
-      (type-case Value expr-v
-        [(objV class-name fd-vals) (cond
-                                     [(equal? 'Object class-name) (numV 1)]
-                                     [(equal? cn class-name) (numV 1)]
-                                     [else (numV 0)])]
-        [else (error 'a "not an object")])))
+;(define (instance-aux expr-v super-name end-class classes)
+;  (depile classes class-name super-name end-class))
   
+(define (depile classes current-class-name current-super-name end-class)
+  (cond
+    [(empty? classes) (numV 0)]
+    [(equal? current-class-name end-class) (numV 1)]
+    [else (begin
+            (display "base-class : ")
+            (display current-class-name)
+            (display "\nsuper-classs : ")
+            (display current-super-name)
+            (display "\nend-classs : ")
+            (display end-class)
+            (display "\n")
+            (depile (rest classes)
+                    current-super-name
+                    (classE-super-name (find current-super-name classes))
+                    end-class))]))
 
 ; Fonctions utilitaires pour l'arithmétique
 (define (num-op [op : (Number Number -> Number)]
@@ -328,8 +307,6 @@
 ; Tests ;
 ;;;;;;;;;
 
-
-
 (define (interp-expr [expr : S-Exp] [classes : (Listof S-Exp)]) : Value
   (interp (exp-s->e (parse expr #f) 'Object)
           (compile-classes (map parse-class classes))
@@ -339,15 +316,9 @@
 (define Posn-class
   `{class Posn extends Object
      {x y}
-     [dist {+ {arg 0} {get this y}}]
+     [dist {+ {get this x} {get this y}}]
      [addDist {+ {send this dist 0}
                  {send arg dist 0}}]})
-
-(define number-object
-  `{class Number extends Object
-     {x y}
-     [plus {+ {get this x} {get this y}}]
-     [mult {* {get this x} {get this y}}]})
 
 (define Posn3D-class
   `{class Posn3D extends Posn
@@ -356,7 +327,6 @@
 
 (define (interp-posn e)
   (interp-expr e (list Posn-class Posn3D-class)))
-
 
 (test (interp-posn `{send {new Posn 1 2}
                           dist
@@ -407,8 +377,7 @@
                          `{class Pair extends Singleton {y}}
                          `{class Triple extends Pair {z}}))
       (numV 0))
-
-(test (interp-expr `{instanceof {new Sextuple 1 2 3} Triple}
+(test (interp-expr `{instanceof {new Sextuple 1 2 3 4 5 6} Triple}
                    (list `{class Singleton extends Object {x}}
                          `{class Pair extends Singleton {y}}
                          `{class Triple extends Pair {z}}
@@ -417,6 +386,17 @@
                          `{class Sextuple extends Quintuple {c}}
                          `{class Septuple extends Sextuple {d}}))
       (numV 1))
+(test (interp-expr `{instanceof {new Singleton 1} Pair}
+                   (list `{class Singleton extends Object {x}}
+                         `{class Pair extends Singleton {y}}
+                         `{class Triple extends Pair {z}}
+                         `{class Quadruple extends Triple {a}}
+                         `{class Quintuple extends Quadruple {b}}
+                         `{class Sextuple extends Quintuple {c}}
+                         `{class Septuple extends Sextuple {d}}
+                         `{class Apart extends Object {d}}
+                         `{class Octo extends Apart {d}}))
+      (numV 0))
 ( test ( interp-expr `{ send 1 plus 2} empty ) ( numV 3))
 ( test ( interp-expr `{ send 1 mult 2} empty ) ( numV 2))
 ( test/exn ( interp-expr `{ send 1 div 2} empty ) "not found ")
