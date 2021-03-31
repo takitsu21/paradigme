@@ -253,20 +253,23 @@
 
 ;(define (instance-aux expr-v super-name end-class classes)
 ;  (depile classes class-name super-name end-class))
-  
+
+
+
 (define (depile classes current-class-name current-super-name end-class)
   (cond
-    [(empty? classes) (numV 0)]
     [(equal? current-class-name end-class) (numV 1)]
+    [(equal? end-class current-super-name) (numV 1)]
+    [(equal? current-super-name 'Object) (numV 0)]
     [else (begin
-            (display "base-class : ")
-            (display current-class-name)
-            (display "\nsuper-classs : ")
-            (display current-super-name)
-            (display "\nend-classs : ")
-            (display end-class)
-            (display "\n")
-            (depile (rest classes)
+;            (display "base-class : ")
+;            (display current-class-name)
+;            (display "\nsuper-classs : ")
+;            (display current-super-name)
+;            (display "\nend-classs : ")
+;            (display end-class)
+;            (display "\n")
+            (depile classes
                     current-super-name
                     (classE-super-name (find current-super-name classes))
                     end-class))]))
@@ -396,6 +399,16 @@
                          `{class Septuple extends Sextuple {d}}
                          `{class Apart extends Object {d}}
                          `{class Octo extends Apart {d}}))
+      (numV 0))
+
+(test (interp-expr `{instanceof {new Pair 1 2} Septuple}
+                   (list `{class Singleton extends Object {x}}
+                         `{class Pair extends Singleton {y}}
+                         `{class Triple extends Pair {z}}
+                         `{class Quadruple extends Triple {a}}
+                         `{class Quintuple extends Quadruple {b}}
+                         `{class Sextuple extends Quintuple {c}}
+                         `{class Septuple extends Sextuple {d}}))
       (numV 0))
 ( test ( interp-expr `{ send 1 plus 2} empty ) ( numV 3))
 ( test ( interp-expr `{ send 1 mult 2} empty ) ( numV 2))
