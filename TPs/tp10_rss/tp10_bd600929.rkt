@@ -46,7 +46,8 @@
   [numV (n : Number)]
   [closV (arg : Symbol) (body : Exp) (env : Env)]
   [boolV (b : Boolean)]
-  [pairV (fst : Thunk) (snd : Thunk)])
+  [pairV (fst : Thunk) (snd : Thunk)]
+  [undefV])
 
 ; Représentation des liaisons
 (define-type Binding
@@ -170,8 +171,7 @@
               res-type
               (type-error arg par-type t2))]
          [else (type-error-function fun t1)]))]
-    [(trueE) (boolT)]
-    [(falseE) (boolT)]
+    [(boolE t) (boolT)]
     [(ifE cnd fst snd)
      (let ([t0 (typecheck cnd env)])
        (type-case Type t0
@@ -260,18 +260,25 @@
        [(closV par body c-env)
         (interp body (extend-env (bind par (interp arg env)) c-env))]
        [else (error 'interp "not a function")])]
-    [(trueE) (trueV)]
-    [(falseE) (falseV)]
-    [(ifE cnd fst snd) (if (equal? (trueV) (interp cnd env))
+    [(boolE b) (boolV b)]
+    [(ifE cnd fst snd) (if (equal? (interp cnd env) (boolV #t))
                            (interp fst env)
                            (interp snd env))]
     [(equalE fst snd) (if (equal? (interp fst env) (interp snd env))
-                          (trueV)
-                          (falseV))]
-    [(pairE fst snd) (interp fst env)]
-    [(fstE body) (interp body env)]
-    [(sndE body) (interp body env)]
-    [(letrecE name t expr body) (interp body env)]))
+                          (boolV #t)
+                          (boolV #f))]
+    [(pairE fst snd)
+     (pairV (delay fst env (box (none))) (delay snd env (box (none))))]
+    [(fstE e) (type-case Value (interp e env)
+                [(pairV f s) (force f)]
+                [else (error 'interp "not a pair")])]
+    [(sndE e) (type-case Value (interp e env)
+                [(pairV f s) (force s)]
+                [else (error 'interp "not a pair")])]
+    [(letrecE name t expr body)
+     (letrec ([new-env (extend-env (bind name val) env)]
+              [val (interp expr new-env)])
+       (interp body env))]))
 
 ; Recherche d'un identificateur dans l'environnement
 (define (lookup [s : Symbol]
@@ -280,6 +287,19 @@
     [(empty? env) (error 'lookup "free identifier")]
     [(equal? s (bind-name (first env))) (bind-val (first env))]
     [else (lookup s (rest env))]))
+
+(define (force [t : Thunk]) : Value
+  (type-case Thunk t
+    [(delay e env mem)
+     (type-case (Optionof Value) (unbox mem)
+       [(none) (begin
+                 (set-box! mem (some (undefV)))
+                 (let ([val (interp e env)])
+                     (begin
+                       (set-box! mem (some val))
+                       val)))]
+       [(some val) val])]
+    [(undef) (undefV)]))
 
 ; Vérification des types pour les opérations arithmétiques
 (define (num-op [op : (Number Number -> Number)]
@@ -329,3 +349,14 @@
                                          { fib {+ n -1} } } } } }]}
              { fib 6} })
        ( numT ))
+( test ( interp-expr
+         `{ letrec {[fib : (num -> num)
+                         { lambda {[n : num]}
+                            { if {= n 0}
+                                 0
+                                 { if {= n 1}
+                                      1
+                                      {+ { fib {+ n -2} }
+                                         { fib {+ n -1} } } } } }]}
+             { fib 6} })
+       ( numV 5))
