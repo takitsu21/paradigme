@@ -229,31 +229,27 @@
          (type-case Value obj-v
            [(objV class-name fd-vals)
             (call-method class-name mtd classes obj-v (interp-r arg))]
-              
            [(numV n) (cond
-                   [(equal? mtd 'plus) (num-op + obj-v (interp-r arg))]
-                   [(equal? mtd 'mult) (num-op * obj-v (interp-r arg))]
-                   [else (error 'interp "not found")])]))]
+                       [(equal? mtd 'plus) (num-op + obj-v (interp-r arg))]
+                       [(equal? mtd 'mult) (num-op * obj-v (interp-r arg))]
+                       [else (error 'interp "not found")])]))]
       [(ssendE obj class-name mtd arg)
        (call-method class-name mtd classes (interp-r obj) (interp-r arg))]
       [(selectE cnd obj arg) (let [(obj-v (interp-r obj))]
-                               (begin
-                                 ;           (display obj-v)-
                                  (type-case Value obj-v
                                    [(objV class-name fd-vals) (if (equal? (interp-r cnd)  (numV 0))
                                                                   (call-method class-name 'select-false classes obj-v (interp-r arg))
                                                                   (call-method class-name 'select-true classes obj-v (interp-r arg)))]
-                                   [else (error 'interp "not an object")])))]
+                                   [else (error 'interp "not an object")]))]
       [(instanceofE expr cn) (let [(obj-v (interp-r expr))]
                                (type-case Value obj-v
                                  [(objV class-name fd-vals) (depile
                                                              classes
                                                              class-name
-                                                             (classE-super-name (find (objV-class-name obj-v) classes))
+                                                             (classE-super-name (find class-name classes))
                                                              cn)]
                                  [else (numV 0)]))])))
 
-  
 (define (depile classes current-class-name current-super-name end-class)
   (cond
     [(equal? current-class-name end-class) (numV 1)]
@@ -294,9 +290,7 @@
   
   (type-case Class (find class-name classes)
     [(classE super-name field-names methods)
-     (begin
-       (display super-name)
-       (interp (find method-name methods) classes this-v arg-v))]))
+     (interp (find method-name methods) classes this-v arg-v)]))
 
 
 ;;;;;;;;;
@@ -309,12 +303,6 @@
           (objV 'Object empty)
           (numV 0)))
 
-(define (number-compiled)
-  (compile-classes (map parse-class (list `{class Number extends Object
-                                             {x}
-                                             [plus {+ arg x}]
-                                             [mult {* arg x}]
-                                             }))))
 (define Posn-class
   `{class Posn extends Object
      {x y}
@@ -334,7 +322,75 @@
                           dist
                           0})
       (numV 3))
+(test (interp-expr `{send {new Fibo 0 1} compute 10}
+                   (list `{class Fibo extends Object
+                            {u0 u1}
+                            {compute {select arg this arg}}
+                            {select-true {send {new Fibo
+                                                    {get this u1}
+                                                    {+ {get this u0} {get this u1}}}
+                                               compute
+                                               {+ arg -1}}}
+                            {select-false {get this u0}}}))
+      (numV 55))
 
+(test (interp-expr `{send {new AppE
+                               {new LamE
+                                    0
+                                    {new AppE
+                                         {new LamE
+                                              1
+                                              {new MultE
+                                                   {new PlusE
+                                                        {new IdE 0}
+                                                        {new NumE 2}}
+                                                   {new IdE 1}}}
+                                         {new NumE 3}}}
+                               {new NumE 1}}
+                          interp
+                          {new Empty}}
+                   (list `{class Binding extends Object
+                            {symb val}
+                            {equal {select {+ {get this symb} {* -1 arg}}
+                                           this
+                                           0}}
+                            {select-true 0}
+                            {select-false 1}}
+                         `{class Empty extends Object {}}
+                         `{class Env extends Object
+                            {binding env}
+                            {lookup {select {send {get this binding} equal arg} this 0}}
+                            {select-true {get {get this binding} val}}
+                            {select-false {send {get this env} lookup arg}}}
+                         `{class NumE extends Object
+                            {n}
+                            {interp {new NumV {get this n}}}}
+                         `{class IdE extends Object
+                            {id}
+                            {interp {send arg lookup {get this id}}}}
+                         `{class PlusE extends Object
+                            {l r}
+                            {interp (new NumV {+ {get {send {get this l} interp arg} n}
+                                                 {get {send {get this r} interp arg} n}})}}
+                         `{class MultE extends Object
+                            {l r}
+                            {interp (new NumV {* {get {send {get this l} interp arg} n}
+                                                 {get {send {get this r} interp arg} n}})}}
+                         `{class LamE extends Object
+                            {par body}
+                            {interp {new ClosV {get this par} {get this body} arg}}}
+                         `{class AppE extends Object
+                            {f x}
+                            {interp {send {send {get this f} interp arg}
+                                          apply
+                                          {send {get this x} interp arg}}}}
+                         `{class NumV extends Object {n}}
+                         `{class ClosV extends Object
+                            {par body env}
+                            {apply {send {get this body}
+                                         interp
+                                         {new Env {new Binding {get this par} arg} {get this env}}}}}))
+      (objV 'NumV (list (numV 9))))
 (test (interp-posn `{send {new Posn3D 3 4 5}
                           addDist
                           {new Posn 1 2}})
@@ -409,8 +465,26 @@
                          `{class Sextuple extends Quintuple {c}}
                          `{class Septuple extends Sextuple {d}}))
       (numV 0))
+(test (interp-expr `{instanceof {new Pair 1 2} Object}
+                   (list `{class Singleton extends Object {x}}
+                         `{class Pair extends Singleton {y}}
+                         `{class Triple extends Pair {z}}))
+      (numV 1))
+(test (interp-expr `{instanceof {send 1 plus 3} Pair}
+                   (list `{class Singleton extends Object {x}}
+                         `{class Pair extends Singleton {y}}
+                         `{class Triple extends Pair {z}}))
+      (numV 0))
+(test (interp-expr `{instanceof {new Object} Object}
+                   (list `{class Singleton extends Object {x}}
+                         `{class Pair extends Singleton {y}}
+                         `{class Triple extends Pair {z}}))
+      (numV 1))
 ( test ( interp-expr `{ send 1 plus 2} empty ) ( numV 3))
 ( test ( interp-expr `{ send 1 mult 2} empty ) ( numV 2))
 (test (interp-expr `{send 2 plus {send 3 mult 4}} empty) (numV 14))
 (test/exn ( interp-expr `{send 2 div 2} empty ) "not found")
 (test/exn ( interp-expr `{send 2 plus {send 3 div {send 4 mult 2}}} empty ) "not found")
+( test/exn ( interp-expr `{ send {send 7 plus {send 1 plus 2}} plus {new Object}} empty )"not a number")
+( test ( interp-expr `{ send {send 7 plus {send 1 plus 2}} plus {send 4 plus 5}} empty ) (numV 19))
+( test/exn ( interp-expr `{ send {new Object}  plus {send 7 plus {send 1 plus 2}}} empty )"not found")
