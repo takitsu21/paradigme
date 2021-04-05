@@ -236,11 +236,11 @@
       [(ssendE obj class-name mtd arg)
        (call-method class-name mtd classes (interp-r obj) (interp-r arg))]
       [(selectE cnd obj arg) (let [(obj-v (interp-r obj))]
-                                 (type-case Value obj-v
-                                   [(objV class-name fd-vals) (if (equal? (interp-r cnd)  (numV 0))
-                                                                  (call-method class-name 'select-false classes obj-v (interp-r arg))
-                                                                  (call-method class-name 'select-true classes obj-v (interp-r arg)))]
-                                   [else (error 'interp "not an object")]))]
+                               (type-case Value obj-v
+                                 [(objV class-name fd-vals) (if (equal? (interp-r cnd)  (numV 0))
+                                                                (call-method class-name 'select-false classes obj-v (interp-r arg))
+                                                                (call-method class-name 'select-true classes obj-v (interp-r arg)))]
+                                 [else (error 'interp "not an object")]))]
       [(instanceofE expr cn) (let [(obj-v (interp-r expr))]
                                (type-case Value obj-v
                                  [(objV class-name fd-vals) (depile
@@ -488,3 +488,8 @@
 ( test/exn ( interp-expr `{ send {send 7 plus {send 1 plus 2}} plus {new Object}} empty )"not a number")
 ( test ( interp-expr `{ send {send 7 plus {send 1 plus 2}} plus {send 4 plus 5}} empty ) (numV 19))
 ( test/exn ( interp-expr `{ send {new Object}  plus {send 7 plus {send 1 plus 2}}} empty )"not found")
+( test ( interp-expr `{ instanceof { new Pair 1 2} Pomme }
+                     ( list `{ class Singleton extends Object {x} }
+                            `{ class Pair extends Singleton {y} }
+                            `{ class Triple extends Pair {z} }))
+       ( numV 0))
