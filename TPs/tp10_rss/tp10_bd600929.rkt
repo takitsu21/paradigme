@@ -167,11 +167,20 @@
              t2))))]
     [(equalE fst snd)
      (let ([t1 (varT (box (none)))]
-           [t2 (varT (box (none)))])
+           [t2 (varT (box (none)))]
+           [t3 (typecheck fst env)]
+           [t4 (typecheck snd env)])
        (begin
-         (unify! (typecheck fst env) t1 fst)
-         (unify! (typecheck snd env) t2 snd)
+         (unify! t3 t1 fst)
+         (unify! t4 t2 snd)
          (boolT)))]
+;         (if (and (equal? (numT) (resolve t3)) (equal? (numT) (resolve t4)))
+;             (boolT)
+;             (type-error fst t3 t4))))]
+;         (if (and (equal? (numT) (resolve t1)) (equal? (numT) (resolve t2)))
+;             (boolT)
+;         (type-error fst t1 t2))))]
+    
     [(pairE fst snd) (let ([t1 (varT (box (none)))]
                            [t2 (varT (box (none)))])
                        (begin
@@ -414,3 +423,19 @@
 (test (typecheck-expr `{lambda {[x : ?]} {if x x false}}) (arrowT (boolT) (boolT)))
 (test (typecheck-expr `{lambda {[p : ?]} {if {fst p} {snd p} {+ 1 {snd p}}}})
       (arrowT (prodT (boolT) (numT)) (numT)))
+( test ( interp-expr
+         `{ letrec {[fib : (num -> num)
+                         { lambda {[n : num]}
+                            { if {= n 0}
+                                 0
+                                 { if {= n 1}
+                                      1
+                                      {+ { fib {+ n -2} }
+                                         { fib {+ n -1} } } } } }]}
+             { fib 20} })
+       (numV 6765))
+( test/exn ( typecheck-expr `{ fst 2 })
+           "typecheck")
+
+( test/exn ( typecheck-expr `{ snd 5 })
+           "typecheck")
