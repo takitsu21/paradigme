@@ -25,11 +25,7 @@
 
 ; Représentation des liaisons
 (define-type Binding
-  [bind (name : Symbol) (val : (Boxof Thunk))])
-
-(define-type Thunk
-  [delay (e : Exp) (env : Env) (mem : (Boxof (Optionof Value)))]
-  [undef])
+  [bind (name : Symbol) (val : (Boxof Value))])
 
 ; Manipulation de l'environnement
 (define-type-alias Env (Listof Binding))
@@ -81,14 +77,14 @@
 (define (interp [e : Exp] [env : Env]) : Value
   (type-case Exp e
     [(numE n) (numV n)]
-    [(idE s) (force (lookup s env))]
+    [(idE s) (lookup s env)]
     [(plusE l r) (num+ (interp l env) (interp r env))]
     [(multE l r) (num* (interp l env) (interp r env))]
     [(letrecE s rhs body)
-     (let ([b (box (undef))])
+     (let ([b (box (undefV))])
        (let ([new-env (extend-env (bind s b) env)])
          (begin
-           (set-box! b (delay rhs env (box (some (interp rhs new-env)))))
+           (set-box! b (interp rhs new-env))
            (interp body new-env))))]
     [(ifE cnd l r)
      (type-case Value (interp cnd env)
@@ -98,7 +94,7 @@
     [(appE f arg)
      (type-case Value (interp f env)
        [(closV par body c-env)
-        (interp body (extend-env (bind par (box (delay arg env (box (some (interp arg env)))))) c-env))]
+        (interp body (extend-env (bind par (box (interp arg env))) c-env))]
        [else (error 'interp "not a function")])]))
 
 ; Fonctions utilitaires pour l'arithmétique
@@ -114,19 +110,8 @@
 (define (num* [l : Value] [r : Value]) : Value
   (num-op * l r))
 
-(define (force [t : Thunk]) : Value
-  (type-case Thunk t
-    [(delay e env mem)
-     (type-case (Optionof Value) (unbox mem)
-       [(none) (let ([val (interp e env)])
-                 (begin
-                   (set-box! mem (some val))
-                   val))]
-       [(some val) val])]
-    [(undef) (undefV)]))
-
 ; Recherche d'un identificateur dans l'environnement
-(define (lookup [n : Symbol] [env : Env]) : Thunk
+(define (lookup [n : Symbol] [env : Env]) : Value
   (cond
     [(empty? env) (error 'lookup "free identifier")]
     [(equal? n (bind-name (first env))) (unbox (bind-val (first env)))]
