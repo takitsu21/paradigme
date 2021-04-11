@@ -176,7 +176,7 @@
                        (begin
                          (unify! t1 (typecheck fst env) fst)
                          (unify! t2 (typecheck snd env) snd)
-                         (prodT (resolve t1) (resolve t2))))]
+                         (prodT t1 t2)))]
     [(fstE body)
      (let ([t1 (prodT (varT (box (none))) (varT (box (none))))])
        (begin
@@ -197,7 +197,7 @@
              [t-body (typecheck body new-env)])
          (begin
            (unify! t t-rhs rhs)
-           (typecheck body new-env))))]))
+           t-body)))]))
                                   
 
 ; Concaténation de chaînes de caractères
@@ -205,10 +205,10 @@
   (foldr string-append "" strings))
 
 ; Message d'erreur
-(define (type-error [expr : Exp] [expected-type : Type] [found-type : Type])
+(define (type-error [expr : Exp] [t1 : Type] [t2 : Type])
   (error 'typecheck (cat (list "expression " (to-string  expr)
-                               ", expected type " (to-string expected-type)
-                               ", found type " (to-string found-type)))))
+                               ", unable to unify " (to-string t1)
+                               " and " (to-string t2)))))
 
 ; Message d'erreur
 (define (type-error-function [expr : Exp] [found-type : Type])

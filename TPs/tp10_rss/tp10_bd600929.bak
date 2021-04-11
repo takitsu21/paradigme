@@ -13,14 +13,23 @@
   [plusE (l : Exp) (r : Exp)]
   [multE (l : Exp) (r : Exp)]
   [lamE (par : Symbol) (par-type : Type) (body : Exp)]
-  [appE (fun : Exp) (arg : Exp)])
+  [appE (fun : Exp) (arg : Exp)]
+  [boolE (b : Boolean)]
+  [ifE (cnd : Exp) (fst : Exp) (snd : Exp)]
+  [equalE (fst : Exp) (snd : Exp)]
+  [pairE (fst : Exp) (snd : Exp)]
+  [fstE (body : Exp)]
+  [sndE (body : Exp)]
+  [letrecE (name : Symbol) (t : Type) (expr : Exp) (body : Exp)])
 
+;[letrecE (args : (Listof (Symbol * (Type * Exp)))) (body : Exp)]
 ; Représentation du type des expressions
 (define-type Type
   [numT]
   [boolT]
   [arrowT (par : Type) (res : Type)]  
-  [prodT (l : Type) (r : Type)])
+  [prodT (l : Type) (r : Type)]
+  [varT (is : (Boxof (Optionof Type)))])
    
 ; Représentation des liaisons identificateurs type
 (define-type TypeBinding
@@ -29,14 +38,18 @@
 ; Environnement pour les types
 (define-type-alias TypeEnv (Listof TypeBinding))
 
+
 ; Représentation des valeurs
 (define-type Value
   [numV (n : Number)]
-  [closV (arg : Symbol) (body : Exp) (env : Env)])
+  [closV (arg : Symbol) (body : Exp) (env : Env)]
+  [boolV (b : Boolean)]
+  [pairV (fst : Value) (snd : Value)]
+  [undefV])
 
 ; Représentation des liaisons
 (define-type Binding
-  [bind (name : Symbol) (val : Value)])
+  [bind (name : Symbol) (val : (Boxof Value))])
 
 ; Manipulation de l'environnement
 (define-type-alias Env (Listof Binding))
@@ -47,10 +60,38 @@
 ; Analyse syntaxique ;
 ;;;;;;;;;;;;;;;;;;;;;;
 
+(define (compose f g)
+  (lambda (x) (f (g x))))
+
 (define (parse [s : S-Exp]) : Exp
   (cond
     [(s-exp-match? `NUMBER s) (numE (s-exp->number s))]
+    [(s-exp-match? `true s) (boolE #t)]
+    [(s-exp-match? `false s) (boolE #f)]
     [(s-exp-match? `SYMBOL s) (idE (s-exp->symbol s))]
+    [(s-exp-match? `{letrec {[SYMBOL : ANY ANY]} ANY} s)
+     (let ([sl (s-exp->list s)])
+       (let ([sll (s-exp->list (first (s-exp->list (second sl))))])
+         (letrecE
+          (s-exp->symbol (first sll))
+          (parse-type (third sll))
+          (parse (fourth sll))
+          (parse (third sl)))))]
+    [(s-exp-match? `{= ANY ANY} s)
+     (let ([sl (s-exp->list s)])
+       (equalE (parse (second sl)) (parse (third sl))))]
+    [(s-exp-match? `{if ANY ANY ANY} s)
+     (let ([sl (s-exp->list s)])
+       (ifE (parse (second sl)) (parse (third sl)) (parse (fourth sl))))]
+    [(s-exp-match? `{pair ANY ANY} s)
+     (let ([sl (s-exp->list s)])
+       (pairE (parse (second sl)) (parse (third sl))))]
+    [(s-exp-match? `{fst ANY} s)
+     (let ([sl (s-exp->list s)])
+       (fstE (parse (second sl))))]
+    [(s-exp-match? `{snd ANY} s)
+     (let ([sl (s-exp->list s)])
+       (sndE (parse (second sl))))]
     [(s-exp-match? `{+ ANY ANY} s)
      (let ([sl (s-exp->list s)])
        (plusE (parse (second sl)) (parse (third sl))))]
@@ -84,10 +125,13 @@
      (let ([sl (s-exp->list s)])
        (arrowT (parse-type (first sl))
                (parse-type (third sl))))]
+    [(s-exp-match? `? s)
+     (varT (box (none)))]
     [(s-exp-match? `(ANY * ANY) s)
      (let ([sl (s-exp->list s)])
        (prodT (parse-type (first sl)) (parse-type (third sl))))]
     [else (error 'parse "invalid input")]))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Vérification des types ;
@@ -97,47 +141,74 @@
   (type-case Exp e
     [(numE n) (numT)]
     [(idE s) (type-lookup s env)]
-    [(plusE l r)
-     (let ([t1 (typecheck l env)]
-           [t2 (typecheck r env)])
-       (type-case Type t1
-         [(numT)
-          (type-case Type t2
-            [(numT) (numT)]
-            [else (type-error r (numT) t2)])]
-         [else (type-error l (numT) t1)]))]
-    [(multE l r)
-     (let ([t1 (typecheck l env)]
-           [t2 (typecheck r env)])
-       (type-case Type t1
-         [(numT)
-          (type-case Type t2
-            [(numT) (numT)]
-            [else (type-error r (numT) t2)])]
-         [else (type-error l (numT) t1)]))]
+    [(plusE l r) (typecheck-op l r env)]
+    [(multE l r) (typecheck-op l r env)]
     [(lamE par par-type body)
      (arrowT par-type
              (typecheck body
                         (extend-env (tbind par par-type) env)))]
     [(appE fun arg)
-     (let ([t1 (typecheck fun env)]
-           [t2 (typecheck arg env)])
-       (type-case Type t1
-         [(arrowT par-type res-type)
-          (if (equal? par-type t2)
-              res-type
-              (type-error arg par-type t2))]
-         [else (type-error-function fun t1)]))]))
+     (let ([t1 (varT (box (none)))]
+           [t2 (varT (box (none)))])
+       (begin
+         (unify! (typecheck fun env) (arrowT t1 t2) fun)
+         (unify! (typecheck arg env) t1 arg)
+         t2))]
+    [(boolE t) (boolT)]
+    [(ifE cnd fst snd)
+     (begin
+       (unify! (typecheck cnd env) (boolT) cnd)
+       (let ([t1 (typecheck fst env)]
+             [t2 (typecheck snd env)])
+         (begin
+           (unify! t1 t2 fst)
+           t2)))]
+    [(equalE fst snd)
+     (let ([t1 (typecheck fst env)]
+           [t2 (typecheck snd env)])
+       (begin
+         (unify! t1 (numT) fst)
+         (unify! t1 t2 snd)
+         (boolT)))]
+    
+    [(pairE fst snd) (let ([t1 (varT (box (none)))]
+                           [t2 (varT (box (none)))])
+                       (begin
+                         (unify! t1 (typecheck fst env) fst)
+                         (unify! t2 (typecheck snd env) snd)
+                         (prodT (resolve t1) (resolve t2))))]
+    [(fstE body)
+     (let ([t1 (prodT (varT (box (none))) (varT (box (none))))])
+       (begin
+         (unify! (typecheck body env) t1 body)
+         (type-case Type (resolve t1)
+           [(prodT l r) (resolve l)]
+           [else (type-error-product body t1)])))]
+    [(sndE body) (let ([t1 (prodT (varT (box (none))) (varT (box (none))))])
+                   (begin
+                     (unify! (typecheck body env) t1 body)
+                     (type-case Type (resolve t1)
+                       [(prodT l r) (resolve r)]
+                       [else (type-error-product body t1)])))]
+                     
+    [(letrecE name t rhs body)
+     (let ([new-env (extend-env (tbind name t) env)])
+       (let ([t-rhs (typecheck rhs new-env)]
+             [t-body (typecheck body new-env)])
+         (begin
+           (unify! t t-rhs rhs)
+           (typecheck body new-env))))]))
+                                  
 
 ; Concaténation de chaînes de caractères
 (define (cat [strings : (Listof String)]) : String
   (foldr string-append "" strings))
 
 ; Message d'erreur
-(define (type-error [expr : Exp] [expected-type : Type] [found-type : Type])
+(define (type-error [expr : Exp] [t1 : Type] [t2 : Type])
   (error 'typecheck (cat (list "expression " (to-string  expr)
-                               ", expected type " (to-string expected-type)
-                               ", found type " (to-string found-type)))))
+                               ", unable to unify " (to-string t1)
+                               " and " (to-string t2)))))
 
 ; Message d'erreur
 (define (type-error-function [expr : Exp] [found-type : Type])
@@ -173,15 +244,35 @@
     [(appE f arg)
      (type-case Value (interp f env)
        [(closV par body c-env)
-        (interp body (extend-env (bind par (interp arg env)) c-env))]
-       [else (error 'interp "not a function")])]))
+        (interp body (extend-env (bind par (box (interp arg env))) c-env))]
+       [else (error 'interp "not a function")])]
+    [(boolE b) (boolV b)]
+    [(ifE cnd fst snd) (if (equal? (interp cnd env) (boolV #t))
+                           (interp fst env)
+                           (interp snd env))]
+    [(equalE fst snd) (if (equal? (interp fst env) (interp snd env))
+                          (boolV #t)
+                          (boolV #f))]
+    [(pairE fst snd) (pairV (interp fst env) (interp snd env))]
+    [(fstE e) (type-case Value (interp e env)
+                [(pairV l r) l]
+                [else (error 'interp "not a pair")])]
+    [(sndE e) (type-case Value (interp e env)
+                [(pairV l r) r]
+                [else (error 'interp "not a pair")])]
+    [(letrecE s t rhs body)
+     (let ([b (box (undefV))])
+       (let ([new-env (extend-env (bind s b) env)])
+         (begin
+           (set-box! b (interp rhs new-env))
+           (interp body new-env))))]))
 
 ; Recherche d'un identificateur dans l'environnement
 (define (lookup [s : Symbol]
                 [env : Env]) : Value
   (cond
     [(empty? env) (error 'lookup "free identifier")]
-    [(equal? s (bind-name (first env))) (bind-val (first env))]
+    [(equal? s (bind-name (first env))) (unbox (bind-val (first env)))]
     [else (lookup s (rest env))]))
 
 ; Vérification des types pour les opérations arithmétiques
@@ -190,6 +281,69 @@
   (if (and (numV? l) (numV? r))
       (numV (op (numV-n l) (numV-n r)))
       (error 'interp "not a number")))
+
+; spécialisation de typecheck pour les opérateurs arithmétiques
+(define (typecheck-op [l : Exp] [r : Exp] [env : TypeEnv]) : Type
+  (begin
+    (unify! (typecheck l env) (numT) l)
+    (unify! (typecheck r env) (numT) r)
+    (numT)))
+
+(define (occurs [t1 : Type] [t2 : Type]) : Boolean
+  (type-case Type t2
+    [(arrowT t3 t4) (or (occurs t1 t3) (occurs t1 t4))]
+    [(prodT t3 t4) (or (occurs t1 t3) (occurs t1 t4))]
+    [(varT is)
+     (or (eq? t1 t2)
+         (type-case (Optionof Type) (unbox is)
+           [(none) #f]
+           [(some t3) (occurs t1 t3)]))]
+    [else #f]))
+
+; unification de deux types
+(define (unify! [t1 : Type] [t2 : Type] [e : Exp]) : Void
+  (type-case Type t1
+    [(varT is1)
+     (type-case (Optionof Type) (unbox is1)
+       [(some t3) (unify! t3 t2 e)]
+       [(none)
+        (let ([t3 (resolve t2)])
+          (cond
+            [(eq? t1 t3) (void)]
+            [(occurs t1 t3) (type-error e t1 t3)]
+            [else (set-box! is1 (some t3))]))])]
+    [else
+     (type-case Type t2
+       [(varT is2) (unify! t2 t1 e)]
+       [(arrowT t3 t4)
+        (type-case Type t1
+          [(arrowT t5 t6)
+           (begin
+             (unify! t3 t5 e)
+             (unify! t4 t6 e))]
+          [else (type-error e t1 t2)])]
+       [(prodT t3 t4)
+        (type-case Type t1
+          [(prodT t5 t6)
+           (begin
+             (unify! t3 t5 e)
+             (unify! t4 t6 e))]
+          [else (type-error e t1 t2)])]
+       [else
+        (if (equal? t1 t2)
+            (void)
+            (type-error e t1 t2))])]))
+
+; résolution d'une variable (descente dans les alias)
+(define (resolve [t : Type]) : Type
+  (type-case Type t
+    [(varT is)
+     (type-case (Optionof Type) (unbox is)
+       [(none) t]
+       [(some t2) (resolve t2)])]
+    [(arrowT t1 t2) (arrowT (resolve t1) (resolve t2))]
+    [(prodT t1 t2) (prodT (resolve t1) (resolve t2))]
+    [else t]))
 
 ; Spécialisation de num-op pour l'addition
 (define (num+ [l : Value] [r : Value]) : Value
@@ -209,6 +363,82 @@
       (typecheck expr mt-env)
       (interp expr mt-env))))
 
-(define (typecheck-expr [e : S-Exp]) : Type
-  (typecheck (parse e) mt-env))
+( define ( typecheck-expr [e : S-Exp ]) : Type
+   ( resolve ( typecheck ( parse e) mt-env )))
 
+( test ( interp-expr `{ if {= 1 2} true false })
+       (boolV #f))
+( test/exn ( interp-expr `{ if 1 2 3})
+           "typecheck")
+( test ( interp-expr `{ pair 1 true }) (pairV (numV 1) (boolV #t)))
+( test ( interp-expr `{ fst { pair 1 true } }) (numV 1))
+( test ( interp-expr `{ snd { pair 1 true } }) (boolV #t))
+( test ( typecheck-expr `{ lambda {[x : (num * bool )]} { fst x} })
+       ( arrowT ( prodT ( numT ) ( boolT )) ( numT )))
+( test ( interp-expr
+         `{ letrec {[fib : (num -> num)
+                         { lambda {[n : num]}
+                            { if {= n 0}
+                                 0
+                                 { if {= n 1}
+                                      1
+                                      {+ { fib {+ n -2} }
+                                         { fib {+ n -1} } } } } }]}
+             { fib 6} })
+       (numV 8))
+(test/exn (interp-expr `{let {[f : (num -> num) {lambda {[x : num]} {f x}}]} 0}) "typecheck")
+(test (interp-expr `{letrec {[f : (num -> num) {lambda {[x : num]} {f x}}]} 0}) (numV 0))
+( test ( typecheck-expr `{ let {[f : ? { lambda {[x : ?]} x}]}
+                            { let {[x : ? {f 1}]}
+                               f} })
+       ( arrowT ( numT ) ( numT )))
+
+( test ( interp-expr
+         `{ letrec {[fib : ?
+                         { lambda {[n : ?]}
+                            { if {= n 0}
+                                 0
+                                 { if {= n 1}
+                                      1
+                                      {+ { fib {+ n -2} }
+                                         { fib {+ n -1} } } } } }]}
+             { fib 6} })
+       (numV 8))
+(test (typecheck-expr `{lambda {[x : ?]} {if x 1 2}}) (arrowT (boolT) (numT)))
+(test (interp-expr `{let {[apply-fun : (bool -> (num -> num))
+                                        {lambda {[x : bool]}
+                                          {if x
+                                              {lambda {[x : num]} {+ x 1}}
+                                              {lambda {[x : num]} {* x 2}}}}]}
+                         {{apply-fun true} 3}})
+      (numV 4))
+(test (typecheck-expr `{lambda {[x : ?]} {if x x false}}) (arrowT (boolT) (boolT)))
+(test (typecheck-expr `{lambda {[p : ?]} {if {fst p} {snd p} {+ 1 {snd p}}}})
+      (arrowT (prodT (boolT) (numT)) (numT)))
+( test ( interp-expr
+         `{ letrec {[fib : (num -> num)
+                         { lambda {[n : num]}
+                            { if {= n 0}
+                                 0
+                                 { if {= n 1}
+                                      1
+                                      {+ { fib {+ n -2} }
+                                         { fib {+ n -1} } } } } }]}
+             { fib 20} })
+       (numV 6765))
+( test/exn ( interp-expr `{ fst 2 })
+           "typecheck")
+
+( test/exn ( typecheck-expr `{ snd 5 })
+           "typecheck")
+( test/exn ( interp-expr `{= 1 {= 3 2}})
+           "typecheck")
+( test/exn ( interp-expr `{= 1 false})
+           "typecheck")
+( test/exn ( interp-expr `{= true false})
+           "typecheck")
+
+(test (interp-expr `{let {[f : ?
+                             {lambda {[p : ?]} {if {fst p} {snd p} {+ 1 {snd p}}}}]}
+                      {f {pair false 3}}})
+      (numV 4))
