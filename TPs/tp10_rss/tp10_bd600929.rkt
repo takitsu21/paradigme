@@ -442,3 +442,4 @@
                              {lambda {[p : ?]} {if {fst p} {snd p} {+ 1 {snd p}}}}]}
                       {f {pair false 3}}})
       (numV 4))
+(test/exn (typecheck-expr `{letrec {[x : num true]} {+ x 1}}) "typecheck")
