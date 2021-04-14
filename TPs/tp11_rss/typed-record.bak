@@ -48,44 +48,32 @@
 (define extend-env cons)
 
 
-(define (rtf t)
-  (recordT-type-fields t))
+( define ( is-subtype? [t1 : Type ] [t2 : Type ]) : Boolean
+   (type-case Type t1
+     ((recordT fds t-fds) (type-case Type t2
+                            ((recordT fds2 t-fds2) (and
+                                                    (is-included fds fds2)
+                                                    (check-all-type t-fds fds t-fds2 fds2)))
+                                                   
+                            (else #f)))
+     (else equal? t1 t2)))
 
-(define (rf t)
-  (recordT-fields t))
-
-(define (arp t)
-  (arrowT-par t))
-
-(define (arr t)
-  (arrowT-res t))
-
-(define (is-subtype? [t1 : Type ] [t2 : Type ]) : Boolean
+(define (check-all-type t-fds1 fds1 t-fds2 fds2)
   (cond
-    [(and (recordT? t1) (recordT? t2))
-     (if (< (length (rf t1)) (length (rf t2)))
-         #f
-         (check-sub-type (rtf t2) (rf t2) (rtf t1) (rf t1)))]
-    [(and (arrowT? t1) (arrowT? t2)) (and
-                                      (is-subtype? (arp t2) (arp t1))
-                                      (is-subtype? (arr t1) (arr t2)))]
-     
-    [else (equal? t1 t2)]))
+    ((empty? t-fds1) #t)
+    ((not (equal? (find (first fds1) fds1 t-fds1) (find (first fds1) fds2 t-fds2))) #f)
+    (else (check-all-type (rest t-fds1) (rest fds1) t-fds2 fds2))))
 
-
-
-
-(define (check-sub-type t-fds1 fds1 t-fds2 fds2)
+(define (is-included fds1 fds2)
   (cond
-    [(empty? t-fds1) #t]
-    [(and (member (first fds1) fds2)
-          (is-subtype? (find (first fds1) fds2 t-fds2) (first t-fds1)))
-     (check-sub-type (rest t-fds1) (rest fds1) t-fds2 fds2)]
-    [else #f]))
+    ((empty? fds1 #t))
+    ((not (member?
 
-(define (is-included t1 t2)
-  (filter (lambda (x) (member x t1)) t2))
-
+(define (subtype-rec t t-fds)
+  (cond
+    ((empty? t-fds) #f)
+    ((equal? t (first t-fds)) #t)
+    (else (subtype-rec t (rest t-fds)))))
 ;;;;;;;;;;;;;;;;;;;;;;
 ; Analyse syntaxique ;
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -192,11 +180,29 @@
        (type-case Type t1
          ((recordT fds t-fds)
           (let ([t-arg (typecheck arg env)])
-            (if (is-subtype? t-arg (find fd fds t-fds))
+            
+            (if (is-subtype? (find fd fds t-fds) t-arg)
                 (recordT fds t-fds)
                 (type-error-record arg t1))))               
          (else (type-error-record arg t1))))]))
-                                 
+;     (let ([t-rec (typecheck rec env)])
+;                         (type-case Type t-rec
+;                           ((recordT fds t-fds) (update
+
+; [recordT (fields : (Listof Symbol)) (type-fields : (Listof Type))]
+(define (get-aux fd fds types)
+  (cond
+    [(empty? fds) (error 'get "not found")]
+    [(equal? fd (first fds)) (first types)]
+    [else (get-aux fd (rest fds) (rest types))]))
+
+(define (set-aux fd fds new-t types)
+  (cond
+    [(empty? fds) empty]
+    [(equal? fd (first fds)) (cons new-t (rest types))]
+    [else (cons (first types) (set-aux fd (rest fds) new-t (rest types)))]))
+    
+                                                 
 (define (record-aux fds args env mt-types)
   (if (empty? args)
       mt-types
@@ -419,7 +425,7 @@
               (numT)))))
 
 ; Pour les enregistrements avec sous-typage
-(display "===================================\n")
+(display "===================================")
 
 
 (test (typecheck-expr `{{lambda {[r : {[x : num]}]}
@@ -479,68 +485,4 @@
                    (parse-type `{[x : num]
                                  [y : {[t : bool]}]
                                  [z : bool]}))
-      #t)
-
-(test (is-subtype? 
-       (parse-type `{[w : {[a : bool]}]})
-       (parse-type `{[y : {[p : num] [t : bool]}]
-                     [x : num]
-                     [z : bool]
-                     [M : {[l : num] [t : bool] [j : bool]}]})
-       )
-      #f)
-(test (is-subtype? 
-       (parse-type `{[w : {[a : bool]}]})
-       (parse-type `{[y : {[p : num] [t : bool]}]
-                     [x : num]
-                     [z : bool]
-                     [M : {[l : num] [t : bool] [j : bool]}]})
-       )
-      #f)
-
-;;; Nb différent d'enregistrement
-(display "NB different d'enregistrement\n\n")
-(test (is-subtype? (parse-type `{[y : bool] ;t1
-                                 [x : num]})
-                   (parse-type `{[x : num]})) ;t2
-      #t) 
-(test (is-subtype? (parse-type `{[y : bool]}) ;t1
-                   (parse-type `{[y : bool] ;t2
-                                 [x : num]}))
-      #f)
-
-;;;; Enregistrement dans le désordre
-(display "Enregistrement dans le désordre\n\n")
-(test (is-subtype? (parse-type `{[x : num] [y : bool] [z : num]})
-                   (parse-type `{[y : bool] [z : num] [x : num]}))
-      #t)
-(test (is-subtype? (parse-type `{[x : num] [y : bool] [z : num]})
-                   (parse-type `{[y : bool] [z : bool] [x : num]}))
-      #f)
-
-;;; Enregistrement récursif
-(display "Enregistrement récursif\n\n")
-(test (is-subtype? (parse-type `{[p : {[x : num] [y : bool]}]})
-                   (parse-type `{[p : {[x : num]}]}))
-      #t)
-(test (is-subtype? (parse-type `{[p : {[x : num]}]})
-                   (parse-type `{[p : {[x : num] [y : bool]}]}))
-      #f)
-
-
-;;; Fonctions
-(display "Fonctions\n\n")
-;Exemple 1 CM
-(test (is-subtype? (parse-type `{num -> {[val : num] [gen : num]}})
-                   (parse-type `{num -> {[val : num]}}))
-      #t)
-
-;Exemple 2 CM
-(test (is-subtype? (parse-type `{{[val : num] [gen : num]} -> num})
-                   (parse-type `{{[val : num]} -> num}))
-      #f)
-
-;Exemple 3 CM
-(test (is-subtype? (parse-type `{{[val : num]} -> num}) 
-                   (parse-type `{{[val : num] [gen : num]} -> num}))
       #t)
