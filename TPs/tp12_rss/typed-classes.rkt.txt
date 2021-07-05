@@ -355,7 +355,7 @@
          [classes : (Listof (Symbol * ClassT))]) : Boolean
   (type-case Type t1
     [(objT name1)
-     (type-case Type t2       
+     (type-case Type t2
        [(objT name2)
         (is-subclass? name1 name2 classes)]
        [else #f])]
@@ -377,7 +377,7 @@
 ; Concaténation de chaînes de caractères
 (define (cat [strings : (Listof String)]) : String
   (foldr string-append "" strings))
-                  
+
 ; Message d'erreur
 (define (type-error [expr : ExpS] [expected-type : Type] [found-type : Type])
   (error 'typecheck (cat (list "expression "

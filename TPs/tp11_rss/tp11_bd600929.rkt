@@ -47,6 +47,39 @@
 (define mt-env empty)
 (define extend-env cons)
 
+
+(define (rtf t)
+  (recordT-type-fields t))
+
+(define (rf t)
+  (recordT-fields t))
+
+(define (arp t)
+  (arrowT-par t))
+
+(define (arr t)
+  (arrowT-res t))
+
+(define (is-subtype? [t1 : Type ] [t2 : Type ]) : Boolean
+  (cond
+    [(and (recordT? t1) (recordT? t2))
+     (if (< (length (rf t1)) (length (rf t2)))
+         #f
+         (check-sub-type (rtf t2) (rf t2) (rtf t1) (rf t1)))]
+    [(and (arrowT? t1) (arrowT? t2)) (and
+                                      (is-subtype? (arp t2) (arp t1))
+                                      (is-subtype? (arr t1) (arr t2)))]
+     
+    [else (equal? t1 t2)]))
+
+(define (check-sub-type t-fds1 fds1 t-fds2 fds2)
+  (cond
+    [(empty? t-fds1) #t]
+    [(and (member (first fds1) fds2)
+          (is-subtype? (find (first fds1) fds2 t-fds2) (first t-fds1)))
+     (check-sub-type (rest t-fds1) (rest fds1) t-fds2 fds2)]
+    [else #f]))
+
 ;;;;;;;;;;;;;;;;;;;;;;
 ; Analyse syntaxique ;
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -139,14 +172,32 @@
            [t2 (typecheck arg env)])
        (type-case Type t1
          [(arrowT par-type res-type)
-          (if (equal? par-type t2)
+          (if (is-subtype? t2 par-type)
               res-type
               (type-error arg par-type t2))]
-         [else (type-error-function fun t1)]))]   
-    [(recordE fds args) (error 'typecheck "not yet implemented")]
-    [(getE rec fd) (error 'typecheck "not yet implemented")]
-    [(setE rec fd arg) (error 'typecheck "not yet implemented")]))
-
+         [else (type-error-function fun t1)]))]
+    [(recordE fds args) (recordT fds (record-aux fds args env empty))]
+    [(getE rec fd) (let ([t1 (typecheck rec env)])
+                     (type-case Type t1
+                       ((recordT fds t-fds) (find fd fds t-fds))
+                       (else (type-error-record rec t1))))]
+    [(setE rec fd arg)
+     (let ([t1 (typecheck rec env)])
+       (type-case Type t1
+         ((recordT fds t-fds)
+          (let ([t-arg (typecheck arg env)])
+            (if (is-subtype? t-arg (find fd fds t-fds))
+                t1
+                (type-error-record arg t1))))               
+         (else (type-error-record arg t1))))]))
+                                 
+(define (record-aux fds args env mt-types)
+  (if (empty? args)
+      mt-types
+      (let ([t (typecheck (first args) env)])
+        (let ([new-env (extend-env (tbind (first fds) t) env)])
+          (record-aux (rest fds) (rest args) new-env (cons t mt-types))))))
+      
 ; Concaténation de chaînes de caractères
 (define (cat [strings : (Listof String)]) : String
   (foldr string-append "" strings))
@@ -300,7 +351,6 @@
       (numV 4))
 
 ; Pour les enregistrements
-
 (test (typecheck-expr `{record
                         [x {+ 1 2}]
                         [y {* 3 4}]})
@@ -363,6 +413,8 @@
               (numT)))))
 
 ; Pour les enregistrements avec sous-typage
+(display "===================================\n")
+
 
 (test (typecheck-expr `{{lambda {[r : {[x : num]}]}
                           {get r x}}
@@ -415,3 +467,79 @@
                           {get r x}}})
       (numT))
 
+(test (is-subtype? (parse-type `{[y : {[p : num] [t : bool]}]
+                                 [x : num]
+                                 [z : bool]})
+                   (parse-type `{[x : num]
+                                 [y : {[t : bool]}]
+                                 [z : bool]}))
+      #t)
+
+(test (is-subtype? 
+       (parse-type `{[w : {[a : bool]}]})
+       (parse-type `{[y : {[p : num] [t : bool]}]
+                     [x : num]
+                     [z : bool]
+                     [M : {[l : num] [t : bool] [j : bool]}]})
+       )
+      #f)
+(test (is-subtype? 
+       (parse-type `{[w : {[a : bool]}]})
+       (parse-type `{[y : {[p : num] [t : bool]}]
+                     [x : num]
+                     [z : bool]
+                     [M : {[l : num] [t : bool] [j : bool]}]})
+       )
+      #f)
+
+;;; Nb différent d'enregistrement
+(display "NB different d'enregistrement\n\n")
+(test (is-subtype? (parse-type `{[y : bool] ;t1
+                                 [x : num]})
+                   (parse-type `{[x : num]})) ;t2
+      #t) 
+(test (is-subtype? (parse-type `{[y : bool]}) ;t1
+                   (parse-type `{[y : bool] ;t2
+                                 [x : num]}))
+      #f)
+
+;;;; Enregistrement dans le désordre
+(display "Enregistrement dans le désordre\n\n")
+(test (is-subtype? (parse-type `{[x : num] [y : bool] [z : num]})
+                   (parse-type `{[y : bool] [z : num] [x : num]}))
+      #t)
+(test (is-subtype? (parse-type `{[x : num] [y : bool] [z : num]})
+                   (parse-type `{[y : bool] [z : bool] [x : num]}))
+      #f)
+
+;;; Enregistrement récursif
+(display "Enregistrement récursif\n\n")
+(test (is-subtype? (parse-type `{[p : {[x : num] [y : bool]}]})
+                   (parse-type `{[p : {[x : num]}]}))
+      #t)
+(test (is-subtype? (parse-type `{[p : {[x : num]}]})
+                   (parse-type `{[p : {[x : num] [y : bool]}]}))
+      #f)
+
+
+;;; Fonctions
+(display "Fonctions\n\n")
+;Exemple 1 CM
+(test (is-subtype? (parse-type `{num -> {[val : num] [gen : num]}})
+                   (parse-type `{num -> {[val : num]}}))
+      #t)
+
+;Exemple 2 CM
+(test (is-subtype? (parse-type `{{[val : num] [gen : num]} -> num})
+                   (parse-type `{{[val : num]} -> num}))
+      #f)
+
+;Exemple 3 CM
+(test (is-subtype? (parse-type `{{[val : num]} -> num}) 
+                   (parse-type `{{[val : num] [gen : num]} -> num}))
+      #t)
+(test/exn (typecheck-expr `{{lambda {[r : {[x : num] [y : num]}]}
+                              {+ {get r x} {get r y}}}
+                            {record
+                             [x {+ 1 2}]}}) "typecheck")
+(typecheck-expr `{record [a 0] [b {lambda {[x : num]} x}]})
